@@ -40,12 +40,32 @@
       <div id="map"></div>
       <p class="map-hint">地図をクリックして撮影場所を選択することもできます</p>
 
-      <!-- モード2専用: 日時入力 -->
+      <!-- モード2専用: 日時入力 + スライダー -->
       <div id="datetime-row" class="input-row hidden">
         <label>🕐 日時指定</label>
-        <div class="datetime-box">
-          <input type="date" id="date-input"/>
-          <input type="time" id="time-input" value="22:00"/>
+
+        <!-- 日付 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">📅 日付</span>
+            <input type="date" id="date-input"/>
+          </div>
+          <input type="range" id="date-slider" min="0" max="365" step="1" value="0"/>
+          <div class="slider-ticks">
+            <span>今日</span><span>+3ヶ月</span><span>+6ヶ月</span><span>+9ヶ月</span><span>+1年</span>
+          </div>
+        </div>
+
+        <!-- 時刻 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">🕐 時刻</span>
+            <input type="time" id="time-input" value="22:00"/>
+          </div>
+          <input type="range" id="time-slider" min="0" max="1439" step="5" value="1320"/>
+          <div class="slider-ticks">
+            <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+          </div>
         </div>
       </div>
 

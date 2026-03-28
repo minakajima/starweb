@@ -969,6 +969,10 @@ async function runSimulate() {
   const date = new Date(`${dateVal}T${timeVal || '22:00'}:00`);
   if (isNaN(date.getTime())) { showError('日時の形式が正しくありません。'); return; }
 
+  // スライダーを入力値に同期
+  syncDateSlider();
+  syncTimeSlider();
+
   showLoading(true);
   document.getElementById('optimal-list').classList.add('hidden');
   state.selectedResult = null;
@@ -980,10 +984,51 @@ async function runSimulate() {
 }
 
 // --- 初期化 ---
+// --- rAF デバウンスつきリアルタイム描画 ---
+let _rafPending = false, _pendingDate = null;
+function scheduleSimRender(date) {
+  _pendingDate = date;
+  if (!_rafPending) {
+    _rafPending = true;
+    requestAnimationFrame(() => {
+      _rafPending = false;
+      if (_pendingDate && state.location) {
+        document.getElementById('optimal-list').classList.add('hidden');
+        state.selectedResult = null;
+        showResult(true);
+        renderSkyAndCondition(_pendingDate);
+      }
+    });
+  }
+}
+
+// date-input の値 → date-slider 位置 を同期
+function syncDateSlider() {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const sel   = new Date(document.getElementById('date-input').value);
+  const offset = isNaN(sel) ? 0 : Math.round((sel - today) / 86400000);
+  document.getElementById('date-slider').value = Math.max(0, Math.min(365, offset));
+}
+// time-input の値 → time-slider 位置 を同期
+function syncTimeSlider() {
+  const val = document.getElementById('time-input').value || '22:00';
+  const [h, m] = val.split(':').map(Number);
+  document.getElementById('time-slider').value = (h || 0) * 60 + (m || 0);
+}
+// 現在の入力値から Date を作成
+function buildDateFromInputs() {
+  const dv = document.getElementById('date-input').value;
+  const tv = document.getElementById('time-input').value || '22:00';
+  const d  = new Date(`${dv}T${tv}:00`);
+  return isNaN(d) ? null : d;
+}
+
 document.addEventListener('DOMContentLoaded', () => {
   // 今日の日付をデフォルト
   const today = new Date().toISOString().slice(0, 10);
   document.getElementById('date-input').value = today;
+  syncDateSlider();
+  syncTimeSlider();
 
   // タブ切替
   document.querySelectorAll('.tab-btn').forEach(btn => {
@@ -1036,6 +1081,43 @@ document.addEventListener('DOMContentLoaded', () => {
   document.addEventListener('click', e => {
     if (!searchResults.contains(e.target) && e.target !== locationInput) {
       searchResults.classList.add('hidden');
+    }
+  });
+
+  // --- 日付スライダー ---
+  document.getElementById('date-slider').addEventListener('input', e => {
+    const offset = parseInt(e.target.value);
+    const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() + offset);
+    document.getElementById('date-input').value = d.toISOString().slice(0, 10);
+    if (state.mode === 'simulate') {
+      const date = buildDateFromInputs();
+      if (date) scheduleSimRender(date);
+    }
+  });
+  document.getElementById('date-input').addEventListener('change', () => {
+    syncDateSlider();
+    if (state.mode === 'simulate') {
+      const date = buildDateFromInputs();
+      if (date) scheduleSimRender(date);
+    }
+  });
+
+  // --- 時刻スライダー ---
+  document.getElementById('time-slider').addEventListener('input', e => {
+    const mins = parseInt(e.target.value);
+    const h = String(Math.floor(mins / 60)).padStart(2, '0');
+    const m = String(mins % 60).padStart(2, '0');
+    document.getElementById('time-input').value = `${h}:${m}`;
+    if (state.mode === 'simulate') {
+      const date = buildDateFromInputs();
+      if (date) scheduleSimRender(date);
+    }
+  });
+  document.getElementById('time-input').addEventListener('input', () => {
+    syncTimeSlider();
+    if (state.mode === 'simulate') {
+      const date = buildDateFromInputs();
+      if (date) scheduleSimRender(date);
     }
   });
 
