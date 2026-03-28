@@ -6,12 +6,13 @@
 const SETTINGS_KEY = 'starweb-settings';
 
 const DEFAULT_SETTINGS = {
-  focalLength:  '',      // デフォルト焦点距離 (mm, 空文字=未設定)
-  sensorKey:    'full',  // センサーサイズ
-  orientation:  'portrait', // カメラ向き
-  viewHFov:     110,     // 参照ビュー画角 (°)
-  optimalCount: 5,       // 最適結果表示件数
-  minGcAlt:     5,       // 銀河中心最小高度 (°)
+  focalLength:  '',
+  sensorKey:    'full',
+  orientation:  'portrait',
+  showFov:      false,       // 画角枠のデフォルト表示
+  viewHFov:     110,
+  optimalCount: 5,
+  minGcAlt:     5,
 };
 
 function loadSettings() {
@@ -814,7 +815,7 @@ const state = {
   optimalResults: [],
   selectedResult: null,
   weatherData: null,
-  showFov: false,
+  showFov: !!appSettings.showFov,
   focalLength: appSettings.focalLength ? parseFloat(appSettings.focalLength) : 0,
   sensorKey:   appSettings.sensorKey   || 'full',
   orientation: appSettings.orientation || 'portrait',
@@ -1212,16 +1213,20 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('orient-portrait').classList.toggle('active',  state.orientation === 'portrait');
     document.getElementById('orient-landscape').classList.toggle('active', state.orientation === 'landscape');
     document.querySelector(`input[name="orientation"][value="${state.orientation}"]`).checked = true;
+    // 画角枠の表示状態
+    state.showFov = !!appSettings.showFov;
+    document.getElementById('fov-toggle').checked = state.showFov;
   }
 
   // モーダルを開くときにフォームへ現在の設定値を反映
   function openSettingsModal() {
     const s = appSettings;
-    document.getElementById('s-focal').value   = s.focalLength || '';
-    document.getElementById('s-sensor').value  = s.sensorKey   || 'full';
-    document.getElementById('s-hfov').value    = String(s.viewHFov   || 110);
-    document.getElementById('s-count').value   = String(s.optimalCount || 5);
-    document.getElementById('s-min-alt').value = String(s.minGcAlt ?? 5);
+    document.getElementById('s-focal').value    = s.focalLength || '';
+    document.getElementById('s-sensor').value   = s.sensorKey   || 'full';
+    document.getElementById('s-show-fov').checked = !!s.showFov;
+    document.getElementById('s-hfov').value     = String(s.viewHFov   || 110);
+    document.getElementById('s-count').value    = String(s.optimalCount || 5);
+    document.getElementById('s-min-alt').value  = String(s.minGcAlt ?? 5);
     // 向き
     const orientVal = s.orientation || 'portrait';
     document.querySelector(`input[name="s-orientation"][value="${orientVal}"]`).checked = true;
@@ -1254,6 +1259,7 @@ document.addEventListener('DOMContentLoaded', () => {
       focalLength:  document.getElementById('s-focal').value.trim(),
       sensorKey:    document.getElementById('s-sensor').value,
       orientation:  document.querySelector('input[name="s-orientation"]:checked')?.value || 'portrait',
+      showFov:      document.getElementById('s-show-fov').checked,
       viewHFov:     parseInt(document.getElementById('s-hfov').value)    || 110,
       optimalCount: parseInt(document.getElementById('s-count').value)   || 5,
       minGcAlt:     parseInt(document.getElementById('s-min-alt').value) ?? 5,
