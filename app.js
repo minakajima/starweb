@@ -123,15 +123,15 @@ function findOptimalDates(latDeg, lonDeg) {
 
     // SunCalc で天文薄明を取得
     const times = SunCalc.getTimes(day, latDeg, lonDeg);
-    const nightStart = times.astronomicalDusk;
-    const nightEnd   = times.astronomicalDawn;
+    const nightStart = times.night;
+    const nightEnd   = times.nightEnd;
 
     if (!nightStart || isNaN(nightStart.getTime())) continue;
     if (!nightEnd   || isNaN(nightEnd.getTime()))   continue;
     // 翌朝の薄明を取得
     const nextDay   = new Date(day.getTime() + 86400000);
     const nextTimes = SunCalc.getTimes(nextDay, latDeg, lonDeg);
-    const nightEndActual = nextTimes.astronomicalDawn;
+    const nightEndActual = nextTimes.nightEnd;
     if (!nightEndActual || isNaN(nightEndActual.getTime())) continue;
 
     // 月齢
@@ -707,8 +707,8 @@ function renderSkyAndCondition(date) {
   document.getElementById('cond-altitude').textContent    = altDeg > 0 ? `${altDeg.toFixed(1)}° （撮影可）` : `${altDeg.toFixed(1)}° （地平線下）`;
   document.getElementById('cond-azimuth').textContent     = `${azDeg.toFixed(1)}° (${azimuthLabel(azDeg)})`;
   document.getElementById('cond-moon').textContent        = `${moonPhaseEmoji(moonIll.phase)} ${Math.round(moonIll.fraction * 100)}%`;
-  document.getElementById('cond-twilight-end').textContent   = formatTime(times.astronomicalDusk);
-  document.getElementById('cond-twilight-start').textContent = formatTime(nextTimes.astronomicalDawn);
+  document.getElementById('cond-twilight-end').textContent   = formatTime(times.night);
+  document.getElementById('cond-twilight-start').textContent = formatTime(nextTimes.nightEnd);
 
   // 天気
   const weatherRow = document.getElementById('weather-row');
