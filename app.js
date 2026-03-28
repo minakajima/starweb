@@ -9,7 +9,7 @@ const DEFAULT_SETTINGS = {
   focalLength:  '',
   sensorKey:    'full',
   orientation:  'portrait',
-  showFov:      false,       // 画角枠のデフォルト表示
+  showFov:      true,        // 画角枠のデフォルト表示
   viewHFov:     110,
   optimalCount: 5,
   minGcAlt:     5,
