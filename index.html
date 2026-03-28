@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>天の川撮影プランナー</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <h1>🌌 天の川撮影プランナー</h1>
+    <p class="subtitle">最適な撮影日時を見つけて、天の川をイメージしよう</p>
+  </header>
+
+  <main>
+    <!-- モード切替タブ -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-mode="optimal" id="tab-optimal">
+        📅 最適日時を探す
+      </button>
+      <button class="tab-btn" data-mode="simulate" id="tab-simulate">
+        🔭 日時指定シミュレーション
+      </button>
+    </div>
+
+    <!-- 入力パネル -->
+    <div class="input-panel">
+      <!-- 場所入力 -->
+      <div class="input-row">
+        <label for="location-input">📍 撮影場所</label>
+        <div class="search-box">
+          <input type="text" id="location-input" placeholder="地名を入力（例: 富士山、北海道）" autocomplete="off"/>
+          <button id="search-btn">検索</button>
+        </div>
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+
+      <!-- 地図 -->
+      <div id="map"></div>
+      <p class="map-hint">地図をクリックして撮影場所を選択することもできます</p>
+
+      <!-- モード2専用: 日時入力 -->
+      <div id="datetime-row" class="input-row hidden">
+        <label>🕐 日時指定</label>
+        <div class="datetime-box">
+          <input type="date" id="date-input"/>
+          <input type="time" id="time-input" value="22:00"/>
+        </div>
+      </div>
+
+      <!-- 計算ボタン -->
+      <button id="calc-btn" class="primary-btn">✨ 計算する</button>
+    </div>
+
+    <!-- 結果パネル -->
+    <div id="result-panel" class="result-panel hidden">
+
+      <!-- モード1: 最適日時リスト -->
+      <div id="optimal-list" class="section">
+        <h2>📆 最適撮影日時 TOP5</h2>
+        <div id="optimal-cards"></div>
+      </div>
+
+      <!-- 星空ビジュアライゼーション -->
+      <div class="sky-section">
+        <div class="sky-wrapper">
+          <h2 id="sky-title">🌠 星空シミュレーション</h2>
+          <canvas id="sky-canvas" width="500" height="500"></canvas>
+          <div class="compass-labels">
+            <span class="compass-n">N</span>
+            <span class="compass-e">E</span>
+            <span class="compass-s">S</span>
+            <span class="compass-w">W</span>
+          </div>
+        </div>
+
+        <!-- 撮影条件サマリ -->
+        <div class="condition-panel">
+          <h2>📋 撮影条件</h2>
+          <div id="condition-content">
+            <div class="condition-item">
+              <span class="label">日時</span>
+              <span id="cond-datetime">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">銀河中心高度</span>
+              <span id="cond-altitude">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">銀河中心方位</span>
+              <span id="cond-azimuth">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">月齢</span>
+              <span id="cond-moon">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">天文薄明終了</span>
+              <span id="cond-twilight-end">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">天文薄明開始</span>
+              <span id="cond-twilight-start">—</span>
+            </div>
+            <div class="condition-item" id="weather-row">
+              <span class="label">雲量 / 快晴度</span>
+              <span id="cond-weather">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">総合スコア</span>
+              <span id="cond-score">—</span>
+            </div>
+          </div>
+
+          <!-- カメラ設定 -->
+          <div class="camera-section">
+            <h3>📷 カメラ設定（任意）</h3>
+            <div class="camera-row">
+              <label for="focal-input">焦点距離</label>
+              <input type="number" id="focal-input" placeholder="例: 14" min="8" max="200"/> mm
+            </div>
+            <div class="camera-row">
+              <label for="sensor-select">センサーサイズ</label>
+              <select id="sensor-select">
+                <option value="full">フルサイズ (36×24mm)</option>
+                <option value="apsc">APS-C (23.5×15.6mm)</option>
+                <option value="m43">マイクロフォーサーズ (17.3×13mm)</option>
+              </select>
+            </div>
+            <div class="camera-row" id="fov-display" style="display:none">
+              <span class="label">画角</span>
+              <span id="fov-value">—</span>
+            </div>
+            <div class="camera-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" id="fov-toggle"/>
+                <span class="toggle-slider"></span>
+                画角枠を表示
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ローディング -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>計算中...</p>
+    </div>
+
+    <!-- エラー -->
+    <div id="error-msg" class="error-msg hidden"></div>
+  </main>
+
+  <footer>
+    <p>天文データ: Astronomy Engine ／ 地図: OpenStreetMap ／ 天気: Open-Meteo</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
