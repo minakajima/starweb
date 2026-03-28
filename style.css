@@ -333,6 +333,26 @@ input[type="date"], input[type="time"] { color-scheme: dark; }
 }
 #fov-value { color: var(--accent); font-weight: 600; }
 
+/* 縦/横ボタン */
+.orientation-btns { display: flex; gap: 0.4rem; }
+.orient-btn {
+  padding: 0.25rem 0.7rem;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  user-select: none;
+}
+.orient-btn input[type="radio"] { display: none; }
+.orient-btn.active {
+  background: rgba(74,158,255,0.18);
+  border-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* トグルスイッチ */
 .camera-toggle { margin-top: 0.5rem; }
 .toggle-label {

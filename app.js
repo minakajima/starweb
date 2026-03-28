@@ -295,7 +295,7 @@ function gProject(cam, altDeg, azDeg) {
 }
 
 // --- メイン描画 ---
-function drawSky(canvas, latDeg, lonDeg, date, showFov, focalLength, sensorKey) {
+function drawSky(canvas, latDeg, lonDeg, date, showFov, focalLength, sensorKey, orientation) {
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, VIEW_W, VIEW_H);
 
@@ -314,7 +314,7 @@ function drawSky(canvas, latDeg, lonDeg, date, showFov, focalLength, sensorKey) 
   drawCompassHint(ctx, cam, cAz);
 
   if (showFov && focalLength > 0) {
-    drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey);
+    drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey, orientation);
   }
 }
 
@@ -667,10 +667,13 @@ function drawCompassHint(ctx, cam, cAz) {
 }
 
 // --- 画角オーバーレイ（写真フレーム）---
-function drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey) {
+function drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey, orientation) {
   const sensor = SENSOR[sensorKey] || SENSOR.full;
-  const hFov   = 2 * Math.atan(sensor.w / (2 * focalLength)) * RAD;
-  const vFov   = 2 * Math.atan(sensor.h / (2 * focalLength)) * RAD;
+  // 縦向き(portrait)のときセンサー幅/高さを入れ替え
+  const sw   = orientation === 'portrait' ? sensor.h : sensor.w;
+  const sh   = orientation === 'portrait' ? sensor.w : sensor.h;
+  const hFov = 2 * Math.atan(sw / (2 * focalLength)) * RAD;
+  const vFov = 2 * Math.atan(sh / (2 * focalLength)) * RAD;
 
   // 銀河中心をフレーム中心に
   const fAlt = gc.altDeg > 5 ? gc.altDeg : cAlt;
@@ -784,6 +787,7 @@ const state = {
   showFov: false,
   focalLength: 0,
   sensorKey: 'full',
+  orientation: 'portrait', // 'portrait' | 'landscape'
 };
 
 function showLoading(on) {
@@ -863,7 +867,7 @@ function renderSkyAndCondition(date) {
 
   // Canvas 描画
   const canvas = document.getElementById('sky-canvas');
-  drawSky(canvas, lat, lon, date, state.showFov, state.focalLength, state.sensorKey);
+  drawSky(canvas, lat, lon, date, state.showFov, state.focalLength, state.sensorKey, state.orientation);
 
   // タイトル
   document.getElementById('sky-title').textContent =
@@ -910,9 +914,12 @@ function renderSkyAndCondition(date) {
   // 画角ラベル更新
   if (state.focalLength > 0) {
     const sensor = SENSOR[state.sensorKey] || SENSOR.full;
-    const hFov = 2 * Math.atan(sensor.w / (2 * state.focalLength)) * RAD;
-    const vFov = 2 * Math.atan(sensor.h / (2 * state.focalLength)) * RAD;
-    document.getElementById('fov-value').textContent = `水平 ${hFov.toFixed(1)}° × 垂直 ${vFov.toFixed(1)}°`;
+    const sw   = state.orientation === 'portrait' ? sensor.h : sensor.w;
+    const sh   = state.orientation === 'portrait' ? sensor.w : sensor.h;
+    const hFov = 2 * Math.atan(sw / (2 * state.focalLength)) * RAD;
+    const vFov = 2 * Math.atan(sh / (2 * state.focalLength)) * RAD;
+    const orient = state.orientation === 'portrait' ? '縦' : '横';
+    document.getElementById('fov-value').textContent = `[${orient}] 水平 ${hFov.toFixed(1)}° × 垂直 ${vFov.toFixed(1)}°`;
     document.getElementById('fov-display').style.display = '';
   } else {
     document.getElementById('fov-display').style.display = 'none';
@@ -1050,6 +1057,16 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('sensor-select').addEventListener('change', e => {
     state.sensorKey = e.target.value;
     if (state.focalLength > 0) document.getElementById('focal-input').dispatchEvent(new Event('input'));
+  });
+
+  // 縦/横ボタン
+  document.querySelectorAll('input[name="orientation"]').forEach(radio => {
+    radio.addEventListener('change', e => {
+      state.orientation = e.target.value;
+      document.getElementById('orient-portrait').classList.toggle('active',  state.orientation === 'portrait');
+      document.getElementById('orient-landscape').classList.toggle('active', state.orientation === 'landscape');
+      if (state.focalLength > 0) document.getElementById('focal-input').dispatchEvent(new Event('input'));
+    });
   });
   document.getElementById('fov-toggle').addEventListener('change', e => {
     state.showFov = e.target.checked;

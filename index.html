@@ -122,6 +122,17 @@
                 <option value="m43">マイクロフォーサーズ (17.3×13mm)</option>
               </select>
             </div>
+            <div class="camera-row">
+              <label>向き</label>
+              <div class="orientation-btns">
+                <label class="orient-btn active" id="orient-portrait">
+                  <input type="radio" name="orientation" value="portrait" checked> 縦
+                </label>
+                <label class="orient-btn" id="orient-landscape">
+                  <input type="radio" name="orientation" value="landscape"> 横
+                </label>
+              </div>
+            </div>
             <div class="camera-row" id="fov-display" style="display:none">
               <span class="label">画角</span>
               <span id="fov-value">—</span>
