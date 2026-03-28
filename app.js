@@ -1101,6 +1101,7 @@ document.addEventListener('DOMContentLoaded', () => {
         locationInput.value = r.display_name.split(',')[0];
         searchResults.classList.add('hidden');
         setMapMarker(lat, lon, r.display_name);
+        updateFavAddBtn();
         if (state.mode === 'optimal') runOptimal();
       });
       searchResults.appendChild(item);
@@ -1194,6 +1195,7 @@ document.addEventListener('DOMContentLoaded', () => {
   initMap(loc => {
     state.location = loc;
     locationInput.value = loc.name.split(',')[0];
+    updateFavAddBtn();
     if (state.mode === 'optimal') runOptimal();
   });
 
@@ -1279,4 +1281,169 @@ document.addEventListener('DOMContentLoaded', () => {
     saveSettings(appSettings);
     openSettingsModal(); // フォームを再描画
   });
+
+  // ===== お気に入り =====
+  const FAVORITES_KEY = 'starweb-favorites';
+
+  function loadFavorites() {
+    try { return JSON.parse(localStorage.getItem(FAVORITES_KEY) || '[]'); }
+    catch { return []; }
+  }
+
+  function saveFavorites(favs) {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favs));
+  }
+
+  function updateFavCount(favs) {
+    const badge = document.getElementById('fav-count');
+    if (favs.length > 0) {
+      badge.textContent = favs.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  }
+
+  function isFavorited(lat, lon) {
+    return loadFavorites().some(f => Math.abs(f.lat - lat) < 0.001 && Math.abs(f.lon - lon) < 0.001);
+  }
+
+  function updateFavAddBtn() {
+    const btn = document.getElementById('fav-add-btn');
+    if (!state.location) {
+      btn.disabled = true;
+      btn.textContent = '☆';
+      btn.title = 'お気に入りに追加';
+      return;
+    }
+    btn.disabled = false;
+    if (isFavorited(state.location.lat, state.location.lon)) {
+      btn.textContent = '⭐';
+      btn.title = 'お気に入り登録済み';
+    } else {
+      btn.textContent = '☆';
+      btn.title = 'お気に入りに追加';
+    }
+  }
+
+  function renderFavoritesList() {
+    const favs = loadFavorites();
+    const listEl  = document.getElementById('fav-list');
+    const emptyEl = document.getElementById('fav-empty');
+    listEl.innerHTML = '';
+    updateFavCount(favs);
+
+    if (favs.length === 0) {
+      emptyEl.classList.remove('hidden');
+      return;
+    }
+    emptyEl.classList.add('hidden');
+
+    favs.forEach(fav => {
+      const item = document.createElement('div');
+      item.className = 'fav-item';
+
+      // 名前（クリックで選択）
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'fav-name';
+      nameSpan.textContent = fav.name;
+      nameSpan.title = fav.fullName || fav.name;
+      nameSpan.addEventListener('click', () => {
+        state.location = { lat: fav.lat, lon: fav.lon, name: fav.fullName || fav.name };
+        document.getElementById('location-input').value = fav.name;
+        setMapMarker(fav.lat, fav.lon, fav.fullName || fav.name);
+        document.getElementById('fav-panel').classList.add('hidden');
+        document.getElementById('fav-list-btn').classList.remove('active');
+        updateFavAddBtn();
+        if (state.mode === 'optimal') runOptimal();
+      });
+
+      // 編集ボタン
+      const editBtn = document.createElement('button');
+      editBtn.className = 'fav-btn';
+      editBtn.textContent = '✏️';
+      editBtn.title = '名前を編集';
+      editBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.className = 'fav-name-input';
+        input.value = fav.name;
+        nameSpan.replaceWith(input);
+        input.focus();
+        input.select();
+        const save = () => {
+          const newName = input.value.trim() || fav.name;
+          const favs2 = loadFavorites();
+          const idx = favs2.findIndex(f => f.id === fav.id);
+          if (idx !== -1) { favs2[idx].name = newName; saveFavorites(favs2); }
+          renderFavoritesList();
+          updateFavAddBtn();
+        };
+        input.addEventListener('blur', save);
+        input.addEventListener('keydown', e2 => { if (e2.key === 'Enter') input.blur(); });
+      });
+
+      // 削除ボタン
+      const delBtn = document.createElement('button');
+      delBtn.className = 'fav-btn';
+      delBtn.textContent = '🗑️';
+      delBtn.title = '削除';
+      delBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const favs2 = loadFavorites().filter(f => f.id !== fav.id);
+        saveFavorites(favs2);
+        renderFavoritesList();
+        updateFavAddBtn();
+      });
+
+      item.appendChild(nameSpan);
+      item.appendChild(editBtn);
+      item.appendChild(delBtn);
+      listEl.appendChild(item);
+    });
+  }
+
+  // ☆ ボタン: お気に入り追加/削除
+  document.getElementById('fav-add-btn').addEventListener('click', () => {
+    if (!state.location) return;
+    const favs = loadFavorites();
+    const existIdx = favs.findIndex(
+      f => Math.abs(f.lat - state.location.lat) < 0.001 && Math.abs(f.lon - state.location.lon) < 0.001
+    );
+    if (existIdx !== -1) {
+      // 既登録 → 削除
+      favs.splice(existIdx, 1);
+    } else {
+      // 新規追加
+      const shortName = state.location.name.split(',')[0].trim();
+      favs.push({
+        id: Date.now(),
+        name: shortName,
+        fullName: state.location.name,
+        lat: state.location.lat,
+        lon: state.location.lon,
+      });
+    }
+    saveFavorites(favs);
+    renderFavoritesList();
+    updateFavAddBtn();
+  });
+
+  // ⭐ ボタン: お気に入りパネル開閉
+  document.getElementById('fav-list-btn').addEventListener('click', () => {
+    const panel = document.getElementById('fav-panel');
+    const btn   = document.getElementById('fav-list-btn');
+    const isHidden = panel.classList.toggle('hidden');
+    btn.classList.toggle('active', !isHidden);
+    if (!isHidden) renderFavoritesList();
+  });
+
+  // テキスト入力でクリアしたときもボタン状態を更新
+  document.getElementById('location-input').addEventListener('input', () => updateFavAddBtn());
+
+  // 初期化
+  renderFavoritesList();
+  updateFavAddBtn();
+
 });
