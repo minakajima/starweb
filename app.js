@@ -1,5 +1,34 @@
 /* =========================================================
    天の川撮影プランナー — app.js
+   Section 0: 設定 (localStorage)
+   ========================================================= */
+
+const SETTINGS_KEY = 'starweb-settings';
+
+const DEFAULT_SETTINGS = {
+  focalLength:  '',      // デフォルト焦点距離 (mm, 空文字=未設定)
+  sensorKey:    'full',  // センサーサイズ
+  orientation:  'portrait', // カメラ向き
+  viewHFov:     110,     // 参照ビュー画角 (°)
+  optimalCount: 5,       // 最適結果表示件数
+  minGcAlt:     5,       // 銀河中心最小高度 (°)
+};
+
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    return raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : { ...DEFAULT_SETTINGS };
+  } catch { return { ...DEFAULT_SETTINGS }; }
+}
+
+function saveSettings(s) {
+  try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(s)); } catch {}
+}
+
+// 起動時に設定を読み込んでグローバルに保持
+let appSettings = loadSettings();
+
+/* =========================================================
    Section 1: 天文計算ユーティリティ
    ========================================================= */
 
@@ -153,7 +182,7 @@ function findOptimalDates(latDeg, lonDeg) {
       if (altDeg > maxAlt) { maxAlt = altDeg; bestTime = d; }
     }
 
-    if (maxAlt < 5) continue; // 地平線上5度未満はスキップ
+    if (maxAlt < (appSettings.minGcAlt ?? 5)) continue;
 
     // スコア計算
     const altScore  = Math.max(0, maxAlt) / 90;
@@ -180,7 +209,7 @@ function findOptimalDates(latDeg, lonDeg) {
       Math.abs(d.date.getTime() - r.date.getTime()) < 7 * 86400000
     );
     if (!tooClose) deduped.push(r);
-    if (deduped.length >= 5) break;
+    if (deduped.length >= (appSettings.optimalCount ?? 5)) break;
   }
   return deduped;
 }
@@ -236,7 +265,8 @@ function isWithin7Days(date) {
    ========================================================= */
 
 const VIEW_W = 500, VIEW_H = 340;
-const VIEW_HFOV = 110; // 参照ビューの水平画角(°)
+// 参照ビュー画角は設定値を参照（関数として取得）
+function getViewHFov() { return appSettings.viewHFov || 110; }
 
 // センサーサイズ
 const SENSOR = {
@@ -290,7 +320,7 @@ function gProject(cam, altDeg, azDeg) {
   const vy = v[0]*up[0]    + v[1]*up[1]    + v[2]*up[2];
   const vz = v[0]*fwd[0]   + v[1]*fwd[1]   + v[2]*fwd[2];
   if (vz < 0.02) return null;
-  const f  = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
+  const f  = (VIEW_W/2) / Math.tan(getViewHFov()/2 * DEG);
   return { x: VIEW_W/2 + f*vx/vz, y: VIEW_H/2 - f*vy/vz };
 }
 
@@ -680,10 +710,10 @@ function drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey, orienta
   const fAz  = gc.altDeg > 5 ? gc.azDeg  : cAz;
   const fcam  = buildCamera(fAlt, fAz);
   const fFov  = Math.max(hFov, vFov) * 1.05;
-  const focalF = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
+  const focalF = (VIEW_W/2) / Math.tan(getViewHFov()/2 * DEG);
 
   // フレームの4コーナーをビュー上に投影
-  const fovHalf = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
+  const fovHalf = (VIEW_W/2) / Math.tan(getViewHFov()/2 * DEG);
   const corners3D = [
     [-hFov/2*DEG, +vFov/2*DEG],
     [+hFov/2*DEG, +vFov/2*DEG],
@@ -779,15 +809,15 @@ async function reverseGeocode(lat, lon) {
 
 // アプリ状態
 const state = {
-  mode: 'optimal',         // 'optimal' | 'simulate'
-  location: null,          // { lat, lon, name }
+  mode: 'optimal',
+  location: null,
   optimalResults: [],
   selectedResult: null,
   weatherData: null,
   showFov: false,
-  focalLength: 0,
-  sensorKey: 'full',
-  orientation: 'portrait', // 'portrait' | 'landscape'
+  focalLength: appSettings.focalLength ? parseFloat(appSettings.focalLength) : 0,
+  sensorKey:   appSettings.sensorKey   || 'full',
+  orientation: appSettings.orientation || 'portrait',
 };
 
 function showLoading(on) {
@@ -1164,5 +1194,83 @@ document.addEventListener('DOMContentLoaded', () => {
     state.location = loc;
     locationInput.value = loc.name.split(',')[0];
     if (state.mode === 'optimal') runOptimal();
+  });
+
+  // 起動時に設定値をUIへ反映
+  applySettingsToUI();
+
+  // ===== 設定モーダル =====
+  function applySettingsToUI() {
+    // カメラ設定
+    if (appSettings.focalLength) {
+      document.getElementById('focal-input').value = appSettings.focalLength;
+      state.focalLength = parseFloat(appSettings.focalLength);
+    }
+    document.getElementById('sensor-select').value = appSettings.sensorKey || 'full';
+    state.sensorKey   = appSettings.sensorKey   || 'full';
+    state.orientation = appSettings.orientation || 'portrait';
+    document.getElementById('orient-portrait').classList.toggle('active',  state.orientation === 'portrait');
+    document.getElementById('orient-landscape').classList.toggle('active', state.orientation === 'landscape');
+    document.querySelector(`input[name="orientation"][value="${state.orientation}"]`).checked = true;
+  }
+
+  // モーダルを開くときにフォームへ現在の設定値を反映
+  function openSettingsModal() {
+    const s = appSettings;
+    document.getElementById('s-focal').value   = s.focalLength || '';
+    document.getElementById('s-sensor').value  = s.sensorKey   || 'full';
+    document.getElementById('s-hfov').value    = String(s.viewHFov   || 110);
+    document.getElementById('s-count').value   = String(s.optimalCount || 5);
+    document.getElementById('s-min-alt').value = String(s.minGcAlt ?? 5);
+    // 向き
+    const orientVal = s.orientation || 'portrait';
+    document.querySelector(`input[name="s-orientation"][value="${orientVal}"]`).checked = true;
+    document.getElementById('s-orient-portrait').classList.toggle('active',  orientVal === 'portrait');
+    document.getElementById('s-orient-landscape').classList.toggle('active', orientVal === 'landscape');
+    document.getElementById('settings-overlay').classList.remove('hidden');
+  }
+
+  document.getElementById('settings-btn').addEventListener('click', openSettingsModal);
+
+  document.getElementById('settings-close').addEventListener('click', () => {
+    document.getElementById('settings-overlay').classList.add('hidden');
+  });
+  document.getElementById('settings-overlay').addEventListener('click', e => {
+    if (e.target === document.getElementById('settings-overlay'))
+      document.getElementById('settings-overlay').classList.add('hidden');
+  });
+
+  // 設定モーダル内の向きボタン
+  document.querySelectorAll('input[name="s-orientation"]').forEach(radio => {
+    radio.addEventListener('change', e => {
+      document.getElementById('s-orient-portrait').classList.toggle('active',  e.target.value === 'portrait');
+      document.getElementById('s-orient-landscape').classList.toggle('active', e.target.value === 'landscape');
+    });
+  });
+
+  // 保存
+  document.getElementById('settings-save').addEventListener('click', () => {
+    const newSettings = {
+      focalLength:  document.getElementById('s-focal').value.trim(),
+      sensorKey:    document.getElementById('s-sensor').value,
+      orientation:  document.querySelector('input[name="s-orientation"]:checked')?.value || 'portrait',
+      viewHFov:     parseInt(document.getElementById('s-hfov').value)    || 110,
+      optimalCount: parseInt(document.getElementById('s-count').value)   || 5,
+      minGcAlt:     parseInt(document.getElementById('s-min-alt').value) ?? 5,
+    };
+    appSettings = newSettings;
+    saveSettings(newSettings);
+    applySettingsToUI();
+    document.getElementById('settings-overlay').classList.add('hidden');
+    // 設定を変えたので再描画（場所が選択済みの場合）
+    if (state.location && state.selectedResult)
+      renderSkyAndCondition(state.selectedResult.optimalTime || state.selectedResult.date);
+  });
+
+  // リセット
+  document.getElementById('settings-reset').addEventListener('click', () => {
+    appSettings = { ...DEFAULT_SETTINGS };
+    saveSettings(appSettings);
+    openSettingsModal(); // フォームを再描画
   });
 });

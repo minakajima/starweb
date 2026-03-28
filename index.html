@@ -11,7 +11,88 @@
   <header>
     <h1>🌌 天の川撮影プランナー</h1>
     <p class="subtitle">最適な撮影日時を見つけて、天の川をイメージしよう</p>
+    <button id="settings-btn" class="settings-btn" title="設定">⚙️</button>
   </header>
+
+  <!-- 設定モーダル -->
+  <div id="settings-overlay" class="settings-overlay hidden">
+    <div class="settings-modal">
+      <div class="settings-header">
+        <h2>⚙️ 設定</h2>
+        <button id="settings-close" class="modal-close">✕</button>
+      </div>
+      <div class="settings-body">
+
+        <!-- カメラデフォルト -->
+        <section class="settings-section">
+          <h3>📷 カメラのデフォルト</h3>
+          <div class="settings-row">
+            <label for="s-focal">焦点距離</label>
+            <div class="settings-input-unit">
+              <input type="number" id="s-focal" placeholder="例: 14" min="8" max="200"/> mm
+            </div>
+          </div>
+          <div class="settings-row">
+            <label for="s-sensor">センサーサイズ</label>
+            <select id="s-sensor">
+              <option value="full">フルサイズ (36×24mm)</option>
+              <option value="apsc">APS-C (23.5×15.6mm)</option>
+              <option value="m43">マイクロフォーサーズ (17.3×13mm)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>カメラ向き</label>
+            <div class="orientation-btns">
+              <label class="orient-btn" id="s-orient-portrait">
+                <input type="radio" name="s-orientation" value="portrait"> 縦
+              </label>
+              <label class="orient-btn" id="s-orient-landscape">
+                <input type="radio" name="s-orientation" value="landscape"> 横
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- 表示設定 -->
+        <section class="settings-section">
+          <h3>🖼️ 表示設定</h3>
+          <div class="settings-row">
+            <label for="s-hfov">参照ビュー画角</label>
+            <select id="s-hfov">
+              <option value="80">狭め (80°)</option>
+              <option value="100">標準 (100°)</option>
+              <option value="110" selected>広め (110°)</option>
+              <option value="130">超広角 (130°)</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- 検索設定 -->
+        <section class="settings-section">
+          <h3>🔍 最適日時の検索設定</h3>
+          <div class="settings-row">
+            <label for="s-count">表示件数</label>
+            <select id="s-count">
+              <option value="3">3件</option>
+              <option value="5" selected>5件</option>
+              <option value="10">10件</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label for="s-min-alt">銀河中心の最小高度</label>
+            <div class="settings-input-unit">
+              <input type="number" id="s-min-alt" min="0" max="30" step="1" value="5"/> °
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <div class="settings-footer">
+        <button id="settings-reset" class="reset-btn">リセット</button>
+        <button id="settings-save" class="primary-btn">💾 保存して閉じる</button>
+      </div>
+    </div>
+  </div>
 
   <main>
     <!-- モード切替タブ -->
