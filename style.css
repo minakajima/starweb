@@ -287,6 +287,126 @@ button#search-btn {
 }
 button#search-btn:hover { background: #3a8eef; }
 
+/* ===== お気に入り ===== */
+.location-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.4rem;
+}
+.location-label-row label { margin-bottom: 0; }
+
+.fav-list-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 0.8rem;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.fav-list-btn:hover, .fav-list-btn.open {
+  background: rgba(245,200,66,0.12);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.fav-count {
+  background: var(--gold);
+  color: #000;
+  border-radius: 10px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0 5px;
+  min-width: 16px;
+  text-align: center;
+}
+
+.fav-add-btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-dim);
+  font-size: 1rem;
+  padding: 0 0.55rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+  flex-shrink: 0;
+}
+.fav-add-btn:not(:disabled):hover {
+  background: rgba(245,200,66,0.15);
+  border-color: var(--gold);
+  color: var(--gold);
+}
+.fav-add-btn.saved { color: var(--gold); border-color: var(--gold); }
+.fav-add-btn:disabled { opacity: 0.35; cursor: default; }
+
+.fav-panel {
+  background: var(--bg3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-bottom: 0.8rem;
+  overflow: hidden;
+  animation: fadeIn 0.2s ease;
+}
+.fav-panel.hidden { display: none; }
+
+.fav-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.15s;
+}
+.fav-item:last-child { border-bottom: none; }
+.fav-item:hover { background: rgba(74,158,255,0.06); }
+
+.fav-star { font-size: 0.9rem; flex-shrink: 0; }
+.fav-name {
+  flex: 1;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+  color: var(--text);
+}
+.fav-name:hover { color: var(--accent); }
+.fav-name-input {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 0.88rem;
+  padding: 0.15rem 0.4rem;
+  outline: none;
+}
+.fav-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 0.8rem;
+  padding: 0.15rem 0.35rem;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+.fav-btn:hover { background: rgba(74,158,255,0.15); color: var(--accent); }
+.fav-btn.delete:hover { background: rgba(255,107,107,0.15); color: var(--danger); }
+
+.fav-empty {
+  text-align: center;
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  padding: 0.9rem;
+}
+
 /* 検索候補 */
 .search-results {
   background: var(--bg3);

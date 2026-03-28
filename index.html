@@ -116,12 +116,22 @@
     <div class="input-panel">
       <!-- 場所入力 -->
       <div class="input-row">
-        <label for="location-input">📍 撮影場所</label>
+        <div class="location-label-row">
+          <label for="location-input">📍 撮影場所</label>
+          <button id="fav-list-btn" class="fav-list-btn" title="お気に入り一覧">⭐ お気に入り <span id="fav-count" class="fav-count hidden">0</span></button>
+        </div>
         <div class="search-box">
           <input type="text" id="location-input" placeholder="地名を入力（例: 富士山、北海道）" autocomplete="off"/>
           <button id="search-btn">検索</button>
+          <button id="fav-add-btn" class="fav-add-btn" title="現在地をお気に入りに追加" disabled>☆</button>
         </div>
         <div id="search-results" class="search-results hidden"></div>
+      </div>
+
+      <!-- お気に入りパネル -->
+      <div id="fav-panel" class="fav-panel hidden">
+        <div id="fav-list"></div>
+        <p id="fav-empty" class="fav-empty hidden">まだお気に入りがありません</p>
       </div>
 
       <!-- 地図 -->
