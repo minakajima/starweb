@@ -441,91 +441,84 @@ function drawPhotoStars(ctx, cam) {
 
 // 天の川（写真風: 暖色コア + 青白い外縁 + ダストレーン）
 function drawPhotoMilkyWay(ctx, cam, latDeg, lonDeg, date) {
-  // b=0, b=-2, b=+2 の3面を描画してボリューム感を出す
-  const bLayers = [
-    { b:  0,  passes: [
-        { w:110, a:0.018, c:'#4055a0' },  // 遠い外縁: 淡い青紫
-        { w: 60, a:0.04,  c:'#6070c8' },
-        { w: 30, a:0.08,  c:'#90a8e8' },  // 中間: 青白
-        { w: 14, a:0.18,  c:'#c8d8ff' },  // 内側: 白
-        { w:  5, a:0.35,  c:'#e8efff' },  // コア輝線
-    ]},
-    { b:  2,  passes: [{ w:25, a:0.025, c:'#5060b0' }] },
-    { b: -2,  passes: [{ w:25, a:0.025, c:'#5060b0' }] },
+  // b=0 の銀河面のみ。幅広いストロークの重ね合わせで帯の厚みを表現
+  const passes = [
+    { w:120, a:0.015, c:'#3a4a90' },  // 最外縁: 淡い青紫
+    { w: 65, a:0.038, c:'#5868c0' },
+    { w: 32, a:0.075, c:'#8898e0' },  // 中間: 青白
+    { w: 14, a:0.16,  c:'#c0d0ff' },  // 内側: 白
+    { w:  5, a:0.32,  c:'#e0ecff' },  // コア輝線
   ];
 
-  bLayers.forEach(({ b, passes }) => {
-    const pts = [];
-    for (let li = 0; li <= 360; li += 2) {
-      const { raDeg, decDeg } = galacticToEquatorial(li, b);
-      const { altDeg, azDeg } = equatorialToHorizontal(raDeg, decDeg, latDeg, date, lonDeg);
-      const distFromCenter = Math.min(li, 360 - li);
-      pts.push({ altDeg, azDeg, l: li, distFromCenter });
+  const pts = [];
+  for (let li = 0; li <= 360; li += 2) {
+    const { raDeg, decDeg } = galacticToEquatorial(li, 0);
+    const { altDeg, azDeg } = equatorialToHorizontal(raDeg, decDeg, latDeg, date, lonDeg);
+    const distFromCenter = Math.min(li, 360 - li);
+    pts.push({ altDeg, azDeg, l: li, distFromCenter });
+  }
+
+  // 連続セグメントに分割（投影後に不連続になった箇所で切断）
+  const segments = [];
+  let seg = [];
+  let prevPt = null;
+  pts.forEach(p => {
+    const proj = gProject(cam, p.altDeg, p.azDeg);
+    if (!proj) { if (seg.length > 1) segments.push(seg); seg = []; prevPt = null; return; }
+    if (prevPt && (Math.abs(proj.x - prevPt.x) > 80 || Math.abs(proj.y - prevPt.y) > 80)) {
+      if (seg.length > 1) segments.push(seg); seg = [];
     }
+    seg.push({ ...proj, l: p.l, distFromCenter: p.distFromCenter });
+    prevPt = proj;
+  });
+  if (seg.length > 1) segments.push(seg);
 
-    // 連続セグメントに分割（投影後に不連続になった箇所で切断）
-    const segments = [];
-    let seg = [];
-    let prevPt = null;
-    pts.forEach(p => {
-      const proj = gProject(cam, p.altDeg, p.azDeg);
-      if (!proj) { if (seg.length > 1) segments.push(seg); seg = []; prevPt = null; return; }
-      // 大きな跳びは不連続とみなす
-      if (prevPt && (Math.abs(proj.x - prevPt.x) > 80 || Math.abs(proj.y - prevPt.y) > 80)) {
-        if (seg.length > 1) segments.push(seg); seg = [];
-      }
-      seg.push({ ...proj, l: p.l, distFromCenter: p.distFromCenter });
-      prevPt = proj;
+  segments.forEach(s => {
+    passes.forEach(({ w, a, c }) => {
+      ctx.beginPath();
+      ctx.moveTo(s[0].x, s[0].y);
+      s.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = c;
+      ctx.lineWidth   = w;
+      ctx.globalAlpha = a;
+      ctx.lineCap     = 'round';
+      ctx.lineJoin    = 'round';
+      ctx.stroke();
     });
-    if (seg.length > 1) segments.push(seg);
+    ctx.globalAlpha = 1;
 
-    segments.forEach(s => {
-      passes.forEach(({ w, a, c }) => {
+    // 銀河中心付近: 暖色バルジ（橙〜金）
+    const coreSegs = s.filter(p => p.distFromCenter < 55);
+    if (coreSegs.length > 1) {
+      const corePasses = [
+        { w: 60, a:0.05,  c:'#a06020' },
+        { w: 30, a:0.12,  c:'#d09040' },
+        { w: 12, a:0.28,  c:'#f0c060' },
+        { w:  4, a:0.55,  c:'#fff0c0' },
+      ];
+      corePasses.forEach(({ w, a, c }) => {
         ctx.beginPath();
-        ctx.moveTo(s[0].x, s[0].y);
-        s.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
+        coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.strokeStyle = c;
         ctx.lineWidth   = w;
         ctx.globalAlpha = a;
         ctx.lineCap     = 'round';
-        ctx.lineJoin    = 'round';
         ctx.stroke();
       });
       ctx.globalAlpha = 1;
+    }
 
-      // 銀河中心付近: 暖色バルジ（橙〜金）
-      const coreSegs = s.filter(p => p.distFromCenter < 55);
-      if (coreSegs.length > 1) {
-        const corePasses = [
-          { w: 60, a:0.05,  c:'#a06020' },
-          { w: 30, a:0.12,  c:'#d09040' },
-          { w: 12, a:0.28,  c:'#f0c060' },
-          { w:  4, a:0.55,  c:'#fff0c0' },
-        ];
-        corePasses.forEach(({ w, a, c }) => {
-          ctx.beginPath();
-          ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
-          coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
-          ctx.strokeStyle = c;
-          ctx.lineWidth   = w;
-          ctx.globalAlpha = a;
-          ctx.lineCap     = 'round';
-          ctx.stroke();
-        });
-        ctx.globalAlpha = 1;
-      }
-
-      // ダストレーン（暗い帯: コア中心線に沿って暗くする）
-      if (b === 0 && coreSegs.length > 2) {
-        ctx.beginPath();
-        ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
-        coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
-        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
-        ctx.lineWidth   = 4;
-        ctx.globalAlpha = 1;
-        ctx.stroke();
-      }
-    });
+    // ダストレーン（暗い帯: コア中心線に沿って暗くする）
+    if (coreSegs.length > 2) {
+      ctx.beginPath();
+      ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
+      coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+      ctx.lineWidth   = 4;
+      ctx.globalAlpha = 1;
+      ctx.stroke();
+    }
   });
 }
 
