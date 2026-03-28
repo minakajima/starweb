@@ -309,7 +309,7 @@ function drawSky(canvas, latDeg, lonDeg, date, showFov, focalLength, sensorKey) 
   drawHorizonGround(ctx, cam);
   drawPhotoStars(ctx, cam);
   drawPhotoMilkyWay(ctx, cam, latDeg, lonDeg, date);
-  drawGalacticCenterMark(ctx, cam, gc);
+  drawGalacticCenterMark(ctx, cam, gc, latDeg, lonDeg, date);
   drawMoonPhoto(ctx, cam, latDeg, lonDeg, date);
   drawCompassHint(ctx, cam, cAz);
 
@@ -523,28 +523,86 @@ function drawPhotoMilkyWay(ctx, cam, latDeg, lonDeg, date) {
 }
 
 // 銀河中心マーカー（写真風: 暖色の輝点）
-function drawGalacticCenterMark(ctx, cam, gc) {
-  if (gc.altDeg < -3) return;
-  const pt = gProject(cam, gc.altDeg, gc.azDeg);
-  if (!pt) return;
-  const { x, y } = pt;
-  if (x < 0 || x > VIEW_W || y < 0 || y > VIEW_H) return;
+// 銀河中心バルジ（楕円グロー）: 実際の写真に近いレンダリング
+function drawGalacticCenterMark(ctx, cam, gc, latDeg, lonDeg, date) {
+  if (gc.altDeg < -5) return;
+  const ptCenter = gProject(cam, gc.altDeg, gc.azDeg);
+  if (!ptCenter) return;
+  const cx = ptCenter.x, cy = ptCenter.y;
 
-  // 輝きグロー
-  const grd = ctx.createRadialGradient(x, y, 0, x, y, 28);
-  grd.addColorStop(0,   'rgba(255,210,100,0.5)');
-  grd.addColorStop(0.4, 'rgba(255,170,60,0.15)');
-  grd.addColorStop(1,   'rgba(0,0,0,0)');
-  ctx.fillStyle = grd; ctx.fillRect(x-28, y-28, 56, 56);
+  // バルジの長軸方向: l=+18°の点 → バンド方向をキャンバス座標で求める
+  const r18 = galacticToEquatorial(18, 0);
+  const p18 = equatorialToHorizontal(r18.raDeg, r18.decDeg, latDeg, date, lonDeg);
+  const pt18 = gProject(cam, p18.altDeg, p18.azDeg);
+  // バルジの短軸方向: b=+10°の点
+  const rb10 = galacticToEquatorial(0, 10);
+  const pb10 = equatorialToHorizontal(rb10.raDeg, rb10.decDeg, latDeg, date, lonDeg);
+  const ptB10 = gProject(cam, pb10.altDeg, pb10.azDeg);
 
-  ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2*Math.PI);
-  ctx.fillStyle = '#fff8e0';
-  ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 14;
-  ctx.fill(); ctx.shadowBlur = 0;
+  // キャンバス上の半径（見つからなければデフォルト）
+  const longR = pt18  ? Math.hypot(pt18.x  - cx, pt18.y  - cy) : 55;
+  const shortR = ptB10 ? Math.hypot(ptB10.x - cx, ptB10.y - cy) : 28;
+  // バンド方向の角度
+  const angle = pt18 ? Math.atan2(pt18.y - cy, pt18.x - cx) : 0;
 
-  ctx.fillStyle = 'rgba(255,220,120,0.85)';
-  ctx.font = 'bold 11px sans-serif';
-  ctx.fillText('銀河中心', x+7, y-5);
+  // --- 楕円バルジを外側から内側に向けて重ね塗り ---
+  const bulgeLayers = [
+    { rx: longR*3.5, ry: shortR*3.5, color: 'rgba(40,15,3,0.07)'  },
+    { rx: longR*2.5, ry: shortR*2.5, color: 'rgba(70,25,5,0.10)'  },
+    { rx: longR*1.7, ry: shortR*1.7, color: 'rgba(110,45,8,0.14)' },
+    { rx: longR*1.2, ry: shortR*1.2, color: 'rgba(165,70,15,0.20)'},
+    { rx: longR*0.8, ry: shortR*0.8, color: 'rgba(210,105,25,0.28)'},
+    { rx: longR*0.5, ry: shortR*0.5, color: 'rgba(245,155,50,0.38)'},
+    { rx: longR*0.3, ry: shortR*0.3, color: 'rgba(255,195,90,0.50)'},
+    { rx: longR*0.15,ry: shortR*0.15,color: 'rgba(255,225,140,0.65)'},
+    { rx: longR*0.06,ry: shortR*0.06,color: 'rgba(255,245,200,0.80)'},
+  ];
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(angle);
+  bulgeLayers.forEach(({ rx, ry, color }) => {
+    ctx.beginPath();
+    ctx.ellipse(0, 0, Math.max(rx, 1), Math.max(ry, 1), 0, 0, 2 * Math.PI);
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // --- ダストレーン（暗い帯）: 銀河中心をまたぐ暗い筋 ---
+  // b=+2.5° と b=-2.5° の線をl=-30〜+30でサンプリングして細い暗線を引く
+  [-2.5, 2.5].forEach(bOff => {
+    const dustPts = [];
+    for (let l = -35; l <= 35; l += 3) {
+      const { raDeg, decDeg } = galacticToEquatorial(l, bOff);
+      const pos = equatorialToHorizontal(raDeg, decDeg, latDeg, date, lonDeg);
+      const pt  = gProject(cam, pos.altDeg, pos.azDeg);
+      if (pt) dustPts.push(pt);
+    }
+    if (dustPts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(dustPts[0].x, dustPts[0].y);
+    dustPts.forEach(p => ctx.lineTo(p.x, p.y));
+    ctx.strokeStyle = 'rgba(0,0,0,0.30)';
+    ctx.lineWidth   = 5;
+    ctx.globalAlpha = 1;
+    ctx.lineCap     = 'round';
+    ctx.stroke();
+  });
+
+  // --- 中心星（最明輝点） ---
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+  ctx.fillStyle   = '#fffaee';
+  ctx.shadowColor = '#ffdd88';
+  ctx.shadowBlur  = 16;
+  ctx.fill();
+  ctx.shadowBlur  = 0;
+
+  // ラベル
+  ctx.fillStyle = 'rgba(255,215,100,0.88)';
+  ctx.font      = 'bold 11px sans-serif';
+  ctx.fillText('銀河中心', cx + 8, cy - 6);
 }
 
 // 月（写真風）
