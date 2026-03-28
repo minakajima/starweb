@@ -231,10 +231,19 @@ function isWithin7Days(date) {
 }
 
 /* =========================================================
-   Section 4: 星空 Canvas レンダラー
+   Section 4: 写真ビュー Canvas レンダラー
+   グノモニック投影（銀河中心を中心とした矩形カメラビュー）
    ========================================================= */
 
-const CX = 250, CY = 250, CR = 238; // canvas center & radius
+const VIEW_W = 500, VIEW_H = 340;
+const VIEW_HFOV = 110; // 参照ビューの水平画角(°)
+
+// センサーサイズ
+const SENSOR = {
+  full: { w: 36,   h: 24   },
+  apsc: { w: 23.5, h: 15.6 },
+  m43:  { w: 17.3, h: 13.0 }
+};
 
 // Seeded PRNG (mulberry32)
 function makePRNG(seed) {
@@ -247,306 +256,420 @@ function makePRNG(seed) {
   };
 }
 
-// 等距離方位図法: Alt/Az → Canvas XY (北=上)
-function project(altDeg, azDeg) {
-  const r  = CR * Math.cos(altDeg * DEG);
-  const az = azDeg * DEG;
-  return {
-    x: CX + r * Math.sin(az),
-    y: CY - r * Math.cos(az)
-  };
+// --- グノモニック投影 ---
+
+// Alt/Az → 3D単位ベクトル (x=East, y=Up, z=North)
+function altAzToVec(altDeg, azDeg) {
+  const a = altDeg * DEG, az = azDeg * DEG;
+  return [Math.cos(a)*Math.sin(az), Math.sin(a), Math.cos(a)*Math.cos(az)];
 }
 
+// カメラフレーム構築 (cAlt,cAzの方向を中心に)
+function buildCamera(cAlt, cAz) {
+  const fwd    = altAzToVec(cAlt, cAz);
+  const zenith = [0, 1, 0];
+  const dot    = fwd[0]*zenith[0] + fwd[1]*zenith[1] + fwd[2]*zenith[2];
+  const upRaw  = [zenith[0]-dot*fwd[0], zenith[1]-dot*fwd[1], zenith[2]-dot*fwd[2]];
+  const upLen  = Math.hypot(upRaw[0], upRaw[1], upRaw[2]);
+  if (upLen < 0.001) return buildCamera(cAlt < 0 ? -89 : 89, cAz);
+  const up     = upRaw.map(v => v/upLen);
+  // right = up × fwd  (南向きのとき West が右 = 写真として自然)
+  const right  = [
+    up[1]*fwd[2] - up[2]*fwd[1],
+    up[2]*fwd[0] - up[0]*fwd[2],
+    up[0]*fwd[1] - up[1]*fwd[0]
+  ];
+  return { right, up, fwd };
+}
+
+// グノモニック投影: 3D方向 → Canvas XY
+function gProject(cam, altDeg, azDeg) {
+  const v  = altAzToVec(altDeg, azDeg);
+  const {right, up, fwd} = cam;
+  const vx = v[0]*right[0] + v[1]*right[1] + v[2]*right[2];
+  const vy = v[0]*up[0]    + v[1]*up[1]    + v[2]*up[2];
+  const vz = v[0]*fwd[0]   + v[1]*fwd[1]   + v[2]*fwd[2];
+  if (vz < 0.02) return null;
+  const f  = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
+  return { x: VIEW_W/2 + f*vx/vz, y: VIEW_H/2 - f*vy/vz };
+}
+
+// --- メイン描画 ---
 function drawSky(canvas, latDeg, lonDeg, date, showFov, focalLength, sensorKey) {
   const ctx = canvas.getContext('2d');
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, VIEW_W, VIEW_H);
 
-  // クリップ: 円形ドームのみ描画
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(CX, CY, CR, 0, 2 * Math.PI);
-  ctx.clip();
+  // カメラ方向: 銀河中心（地平線上5°以上ならその方向、なければ南・高度30°）
+  const gc  = galacticCenterAltAz(date, latDeg, lonDeg);
+  const cAlt = gc.altDeg > 5 ? gc.altDeg : 30;
+  const cAz  = gc.altDeg > 5 ? gc.azDeg  : 180;
+  const cam  = buildCamera(cAlt, cAz);
 
-  drawBackground(ctx);
-  drawAltGrid(ctx);
-  drawStars(ctx);
-  drawMilkyWay(ctx, latDeg, lonDeg, date);
-  drawGalacticCenter(ctx, latDeg, lonDeg, date);
-  drawMoon(ctx, latDeg, lonDeg, date);
+  drawPhotoSky(ctx, cam);
+  drawHorizonGround(ctx, cam);
+  drawPhotoStars(ctx, cam);
+  drawPhotoMilkyWay(ctx, cam, latDeg, lonDeg, date);
+  drawGalacticCenterMark(ctx, cam, gc);
+  drawMoonPhoto(ctx, cam, latDeg, lonDeg, date);
+  drawCompassHint(ctx, cam, cAz);
 
-  ctx.restore();
-
-  // 地平線リング
-  ctx.beginPath();
-  ctx.arc(CX, CY, CR, 0, 2 * Math.PI);
-  ctx.strokeStyle = 'rgba(100,160,255,0.35)';
-  ctx.lineWidth   = 2;
-  ctx.shadowColor = '#1a3a6c';
-  ctx.shadowBlur  = 18;
-  ctx.stroke();
-  ctx.shadowBlur  = 0;
-
-  // 方角ラベル
-  drawCardinals(ctx);
-
-  // 画角オーバーレイ
   if (showFov && focalLength > 0) {
-    drawFovOverlay(ctx, latDeg, lonDeg, date, focalLength, sensorKey);
+    drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey);
   }
 }
 
-function drawBackground(ctx) {
-  const grad = ctx.createRadialGradient(CX, CY, 0, CX, CY, CR);
-  grad.addColorStop(0,   '#000005');
-  grad.addColorStop(0.7, '#020210');
-  grad.addColorStop(1,   '#05102a');
+// 空の背景グラデーション（写真風：上が暗い宇宙の黒、地平線付近は微妙に青）
+function drawPhotoSky(ctx, cam) {
+  const grad = ctx.createLinearGradient(0, 0, 0, VIEW_H);
+  grad.addColorStop(0,    '#000007');
+  grad.addColorStop(0.5,  '#010010');
+  grad.addColorStop(0.85, '#030818');
+  grad.addColorStop(1,    '#060d22');
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, 500, 500);
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  // エアグロー: 地平線付近の微かな緑がかった光
+  const horizon = ctx.createLinearGradient(0, VIEW_H*0.65, 0, VIEW_H);
+  horizon.addColorStop(0, 'rgba(0,0,0,0)');
+  horizon.addColorStop(1, 'rgba(15,30,15,0.25)');
+  ctx.fillStyle = horizon;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
 }
 
-function drawAltGrid(ctx) {
+// 地平線と地面を描画
+function drawHorizonGround(ctx, cam) {
+  const rng = makePRNG(0xF00D1234);
+  // alt=0° をaz=0..360でサンプリング
+  const horizPts = [];
+  for (let az = 0; az <= 360; az += 2) {
+    const p = gProject(cam, 0, az);
+    if (p) horizPts.push(p);
+  }
+  if (horizPts.length < 4) {
+    // 地平線がフレーム外 → 下端を地面として塗る
+    const groundY = VIEW_H * 0.85;
+    ctx.fillStyle = '#040a04';
+    ctx.fillRect(0, groundY, VIEW_W, VIEW_H - groundY);
+    return;
+  }
+
+  // 地平線の最小Y（キャンバス上で最も低い位置）を使い地面を塗る
+  const horizYByX = new Map();
+  horizPts.forEach(p => {
+    const xi = Math.round(p.x);
+    if (!horizYByX.has(xi) || horizYByX.get(xi) > p.y) horizYByX.set(xi, p.y);
+  });
+
+  // 地面（地平線より下）を塗りつぶす
   ctx.save();
-  ctx.strokeStyle = 'rgba(80,100,160,0.2)';
-  ctx.lineWidth   = 0.8;
-  ctx.setLineDash([4, 6]);
-  [30, 60].forEach(alt => {
-    const r = CR * Math.cos(alt * DEG);
-    ctx.beginPath();
-    ctx.arc(CX, CY, r, 0, 2 * Math.PI);
-    ctx.stroke();
+  ctx.beginPath();
+  // 左端から右端へ地平線をトレース
+  const sorted = [...horizYByX.entries()].sort((a,b)=>a[0]-b[0]);
+  if (sorted.length > 0) {
+    ctx.moveTo(sorted[0][0], sorted[0][1]);
+    sorted.forEach(([x,y]) => ctx.lineTo(x, y));
+    ctx.lineTo(VIEW_W, VIEW_H);
+    ctx.lineTo(0, VIEW_H);
+    ctx.closePath();
+    // 地面色: 深い緑がかった黒
+    const groundGrad = ctx.createLinearGradient(0, VIEW_H*0.7, 0, VIEW_H);
+    groundGrad.addColorStop(0, '#050d05');
+    groundGrad.addColorStop(1, '#030803');
+    ctx.fillStyle = groundGrad;
+    ctx.fill();
+  }
+
+  // 地平線の大気グロー（うっすらと明るい帯）
+  sorted.forEach(([x, y]) => {
+    const grd = ctx.createLinearGradient(0, y-18, 0, y+10);
+    grd.addColorStop(0,   'rgba(30,60,80,0)');
+    grd.addColorStop(0.4, 'rgba(20,40,55,0.22)');
+    grd.addColorStop(1,   'rgba(0,0,0,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(x-1, y-18, 3, 28);
   });
-  ctx.setLineDash([]);
-  ctx.fillStyle  = 'rgba(80,110,180,0.45)';
-  ctx.font       = '10px sans-serif';
-  ctx.textAlign  = 'left';
-  [30, 60].forEach(alt => {
-    const r = CR * Math.cos(alt * DEG);
-    ctx.fillText(alt + '°', CX + r + 3, CY - 2);
-  });
+  ctx.restore();
+
+  // 地形シルエット（波状の山稜線）
+  ctx.save();
+  ctx.beginPath();
+  let started = false;
+  for (let x = 0; x <= VIEW_W; x++) {
+    const baseY = horizYByX.get(x) ?? (sorted.length > 0
+      ? VIEW_H * 0.75 : VIEW_H * 0.85);
+    // 地形の凸凹: 複数のサイン波の重ね合わせ
+    const bump = Math.sin(x*0.018)*6 + Math.sin(x*0.007+0.8)*10
+               + Math.sin(x*0.034+2)*3 + Math.sin(x*0.052+5)*2;
+    const terrainY = baseY + bump;
+    if (!started) { ctx.moveTo(x, terrainY); started = true; }
+    else ctx.lineTo(x, terrainY);
+  }
+  ctx.lineTo(VIEW_W, VIEW_H); ctx.lineTo(0, VIEW_H); ctx.closePath();
+  ctx.fillStyle = '#030703';
+  ctx.fill();
   ctx.restore();
 }
 
-function drawStars(ctx) {
+// 星（写真風: 青白い点、輝星はグロー付き）
+function drawPhotoStars(ctx, cam) {
   const rng = makePRNG(0xDEADBEEF);
-  const N   = 1400;
+  const N   = 3000; // 全天に配置、視野内だけ描画
   for (let i = 0; i < N; i++) {
     const az  = rng() * 360;
-    const alt = Math.asin(rng()) * RAD; // 0〜90°
-    const mag = Math.pow(rng(), 2);     // 暗い星が多い
-    const { x, y } = project(alt, az);
-    const r   = 0.4 + (1 - mag) * 1.8;
-    const a   = 0.25 + (1 - mag) * 0.75;
-    ctx.beginPath();
-    ctx.arc(x, y, r, 0, 2 * Math.PI);
-    if (mag < 0.15) {
-      ctx.shadowColor = '#cce4ff';
-      ctx.shadowBlur  = 4;
+    const alt = (rng() * 180 - 90); // 全天均一
+    const mag = Math.pow(rng(), 1.8);
+    const pt  = gProject(cam, alt, az);
+    if (!pt) continue;
+    const {x, y} = pt;
+    if (x < -5 || x > VIEW_W+5 || y < -5 || y > VIEW_H+5) continue;
+    const r = 0.3 + (1-mag)*1.7;
+    const a = 0.2 + (1-mag)*0.8;
+    // 青白い星色
+    const blue  = Math.floor(200 + mag*55);
+    const green = Math.floor(210 + mag*45);
+    if (mag < 0.12) {
+      ctx.shadowColor = `rgba(${180},${210},${255},0.9)`;
+      ctx.shadowBlur  = 6;
     }
-    ctx.fillStyle = `rgba(200,220,255,${a})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2*Math.PI);
+    ctx.fillStyle = `rgba(220,${green},${blue},${a.toFixed(2)})`;
     ctx.fill();
     ctx.shadowBlur = 0;
   }
 }
 
-function drawMilkyWay(ctx, latDeg, lonDeg, date) {
-  const pts  = getMilkyWayPoints(date, latDeg, lonDeg, 180);
-  const above = pts.filter(p => p.altDeg > -8);
-  if (above.length < 3) return;
+// 天の川（写真風: 暖色コア + 青白い外縁 + ダストレーン）
+function drawPhotoMilkyWay(ctx, cam, latDeg, lonDeg, date) {
+  // b=0, b=-2, b=+2 の3面を描画してボリューム感を出す
+  const bLayers = [
+    { b:  0,  passes: [
+        { w:110, a:0.018, c:'#4055a0' },  // 遠い外縁: 淡い青紫
+        { w: 60, a:0.04,  c:'#6070c8' },
+        { w: 30, a:0.08,  c:'#90a8e8' },  // 中間: 青白
+        { w: 14, a:0.18,  c:'#c8d8ff' },  // 内側: 白
+        { w:  5, a:0.35,  c:'#e8efff' },  // コア輝線
+    ]},
+    { b:  2,  passes: [{ w:25, a:0.025, c:'#5060b0' }] },
+    { b: -2,  passes: [{ w:25, a:0.025, c:'#5060b0' }] },
+  ];
 
-  // 方位角でソートして連続する弧を作る
-  above.sort((a, b) => a.azDeg - b.azDeg);
-
-  // 不連続点で分割（隣接点の方位角差>60°）
-  const segments = [];
-  let seg = [above[0]];
-  for (let i = 1; i < above.length; i++) {
-    if (above[i].azDeg - above[i-1].azDeg > 60) {
-      segments.push(seg); seg = [];
+  bLayers.forEach(({ b, passes }) => {
+    const pts = [];
+    for (let li = 0; li <= 360; li += 2) {
+      const { raDeg, decDeg } = galacticToEquatorial(li, b);
+      const { altDeg, azDeg } = equatorialToHorizontal(raDeg, decDeg, latDeg, date, lonDeg);
+      const distFromCenter = Math.min(li, 360 - li);
+      pts.push({ altDeg, azDeg, l: li, distFromCenter });
     }
-    seg.push(above[i]);
-  }
-  segments.push(seg);
 
-  segments.forEach(s => {
-    if (s.length < 2) return;
-    // 3パス描画（外側ぼかし→中心輝線）
-    const passes = [
-      { w: 42, a: 0.025, c: '#8090d8' },
-      { w: 22, a: 0.055, c: '#a0b8f0' },
-      { w:  9, a: 0.14,  c: '#d0e4ff' },
-    ];
-    passes.forEach(({ w, a, c }) => {
-      ctx.beginPath();
-      const first = project(s[0].altDeg, s[0].azDeg);
-      ctx.moveTo(first.x, first.y);
-      s.forEach(p => {
-        const { x, y } = project(p.altDeg, p.azDeg);
-        ctx.lineTo(x, y);
-      });
-      ctx.strokeStyle = c;
-      ctx.lineWidth   = w;
-      ctx.globalAlpha = a;
-      ctx.lineCap     = 'round';
-      ctx.lineJoin    = 'round';
-      // 銀河中心付近（l<40 or l>320）は明るく
-      const nearCenter = s.some(p => p.distFromCenter < 40);
-      if (nearCenter) ctx.globalAlpha = a * 2;
-      ctx.stroke();
+    // 連続セグメントに分割（投影後に不連続になった箇所で切断）
+    const segments = [];
+    let seg = [];
+    let prevPt = null;
+    pts.forEach(p => {
+      const proj = gProject(cam, p.altDeg, p.azDeg);
+      if (!proj) { if (seg.length > 1) segments.push(seg); seg = []; prevPt = null; return; }
+      // 大きな跳びは不連続とみなす
+      if (prevPt && (Math.abs(proj.x - prevPt.x) > 80 || Math.abs(proj.y - prevPt.y) > 80)) {
+        if (seg.length > 1) segments.push(seg); seg = [];
+      }
+      seg.push({ ...proj, l: p.l, distFromCenter: p.distFromCenter });
+      prevPt = proj;
     });
-    ctx.globalAlpha = 1;
+    if (seg.length > 1) segments.push(seg);
+
+    segments.forEach(s => {
+      passes.forEach(({ w, a, c }) => {
+        ctx.beginPath();
+        ctx.moveTo(s[0].x, s[0].y);
+        s.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.strokeStyle = c;
+        ctx.lineWidth   = w;
+        ctx.globalAlpha = a;
+        ctx.lineCap     = 'round';
+        ctx.lineJoin    = 'round';
+        ctx.stroke();
+      });
+      ctx.globalAlpha = 1;
+
+      // 銀河中心付近: 暖色バルジ（橙〜金）
+      const coreSegs = s.filter(p => p.distFromCenter < 55);
+      if (coreSegs.length > 1) {
+        const corePasses = [
+          { w: 60, a:0.05,  c:'#a06020' },
+          { w: 30, a:0.12,  c:'#d09040' },
+          { w: 12, a:0.28,  c:'#f0c060' },
+          { w:  4, a:0.55,  c:'#fff0c0' },
+        ];
+        corePasses.forEach(({ w, a, c }) => {
+          ctx.beginPath();
+          ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
+          coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
+          ctx.strokeStyle = c;
+          ctx.lineWidth   = w;
+          ctx.globalAlpha = a;
+          ctx.lineCap     = 'round';
+          ctx.stroke();
+        });
+        ctx.globalAlpha = 1;
+      }
+
+      // ダストレーン（暗い帯: コア中心線に沿って暗くする）
+      if (b === 0 && coreSegs.length > 2) {
+        ctx.beginPath();
+        ctx.moveTo(coreSegs[0].x, coreSegs[0].y);
+        coreSegs.forEach(p => ctx.lineTo(p.x, p.y));
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)';
+        ctx.lineWidth   = 4;
+        ctx.globalAlpha = 1;
+        ctx.stroke();
+      }
+    });
   });
 }
 
-function drawGalacticCenter(ctx, latDeg, lonDeg, date) {
-  const { altDeg, azDeg } = galacticCenterAltAz(date, latDeg, lonDeg);
-  if (altDeg < -5) return;
-  const { x, y } = project(altDeg, azDeg);
+// 銀河中心マーカー（写真風: 暖色の輝点）
+function drawGalacticCenterMark(ctx, cam, gc) {
+  if (gc.altDeg < -3) return;
+  const pt = gProject(cam, gc.altDeg, gc.azDeg);
+  if (!pt) return;
+  const { x, y } = pt;
+  if (x < 0 || x > VIEW_W || y < 0 || y > VIEW_H) return;
 
-  // 外側グロー
-  ctx.beginPath();
-  ctx.arc(x, y, 10, 0, 2 * Math.PI);
-  ctx.fillStyle   = 'rgba(255,200,80,0.12)';
-  ctx.shadowColor = '#ffcc44';
-  ctx.shadowBlur  = 20;
-  ctx.fill();
+  // 輝きグロー
+  const grd = ctx.createRadialGradient(x, y, 0, x, y, 28);
+  grd.addColorStop(0,   'rgba(255,210,100,0.5)');
+  grd.addColorStop(0.4, 'rgba(255,170,60,0.15)');
+  grd.addColorStop(1,   'rgba(0,0,0,0)');
+  ctx.fillStyle = grd; ctx.fillRect(x-28, y-28, 56, 56);
 
-  // 中心点
-  ctx.beginPath();
-  ctx.arc(x, y, 4, 0, 2 * Math.PI);
-  ctx.fillStyle   = '#ffe080';
-  ctx.shadowColor = '#ffcc44';
-  ctx.shadowBlur  = 10;
-  ctx.fill();
-  ctx.shadowBlur  = 0;
+  ctx.beginPath(); ctx.arc(x, y, 3.5, 0, 2*Math.PI);
+  ctx.fillStyle = '#fff8e0';
+  ctx.shadowColor = '#ffcc44'; ctx.shadowBlur = 14;
+  ctx.fill(); ctx.shadowBlur = 0;
 
-  // ラベル
-  if (altDeg > 2) {
-    ctx.fillStyle = 'rgba(255,220,100,0.9)';
-    ctx.font      = 'bold 11px sans-serif';
-    ctx.fillText('銀河中心', x + 8, y - 6);
-  }
+  ctx.fillStyle = 'rgba(255,220,120,0.85)';
+  ctx.font = 'bold 11px sans-serif';
+  ctx.fillText('銀河中心', x+7, y-5);
 }
 
-function drawMoon(ctx, latDeg, lonDeg, date) {
-  const pos  = SunCalc.getMoonPosition(date, latDeg, lonDeg);
-  const ill  = SunCalc.getMoonIllumination(date);
+// 月（写真風）
+function drawMoonPhoto(ctx, cam, latDeg, lonDeg, date) {
+  const pos    = SunCalc.getMoonPosition(date, latDeg, lonDeg);
+  const ill    = SunCalc.getMoonIllumination(date);
   const altDeg = pos.altitude * RAD;
   const azDeg  = ((pos.azimuth * RAD) + 180 + 360) % 360;
-  if (altDeg < -5) return;
-  const { x, y } = project(altDeg, azDeg);
-  const R = 9;
-  const phase = ill.phase;
+  const pt     = gProject(cam, altDeg, azDeg);
+  if (!pt) return;
+  const { x, y } = pt;
+  if (x < -20 || x > VIEW_W+20 || y < -20 || y > VIEW_H+20) return;
 
-  // 月の暗面
-  ctx.beginPath();
-  ctx.arc(x, y, R, 0, 2 * Math.PI);
-  ctx.fillStyle = '#1a2040';
-  ctx.fill();
+  const R = 11, phase = ill.phase, lit = ill.fraction;
 
-  // 輝面（位相に応じた半月〜満月）
-  const lit = ill.fraction;
+  // 月光ハロ
+  const halo = ctx.createRadialGradient(x, y, R, x, y, R*5);
+  halo.addColorStop(0, `rgba(200,200,160,${(lit*0.3).toFixed(2)})`);
+  halo.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = halo; ctx.fillRect(x-R*5, y-R*5, R*10, R*10);
+
+  // 月面
+  ctx.beginPath(); ctx.arc(x, y, R, 0, 2*Math.PI);
+  ctx.fillStyle = '#1c2645'; ctx.fill();
+
   if (lit > 0.03) {
     ctx.save();
-    ctx.beginPath();
-    ctx.arc(x, y, R, 0, 2 * Math.PI);
-    ctx.clip();
-    const waning = phase > 0.5;
-    const ellipseX = R * Math.cos(Math.PI * (phase > 0.5 ? 2 - phase * 2 : phase * 2));
-    ctx.beginPath();
-    ctx.ellipse(x, y, Math.abs(ellipseX), R, 0, 0, 2 * Math.PI);
-    ctx.fillStyle = '#fffde0';
-    ctx.fill();
-    if (!waning) {
-      // 上弦側: 右を残す
-      ctx.fillStyle = '#1a2040';
-      ctx.fillRect(x - R - 1, y - R - 1, R + 1, R * 2 + 2);
-    } else {
-      ctx.fillStyle = '#1a2040';
-      ctx.fillRect(x, y - R - 1, R + 1, R * 2 + 2);
-    }
+    ctx.beginPath(); ctx.arc(x, y, R, 0, 2*Math.PI); ctx.clip();
+    const ellW = Math.abs(R * Math.cos(Math.PI * (phase > 0.5 ? 2-phase*2 : phase*2)));
+    ctx.beginPath(); ctx.ellipse(x, y, ellW, R, 0, 0, 2*Math.PI);
+    ctx.fillStyle = '#fff8d8'; ctx.fill();
+    ctx.fillStyle = '#1c2645';
+    if (phase <= 0.5) ctx.fillRect(x-R-1, y-R-1, R+2, R*2+2);
+    else              ctx.fillRect(x,      y-R-1, R+2, R*2+2);
     ctx.restore();
   }
+  ctx.beginPath(); ctx.arc(x, y, R, 0, 2*Math.PI);
+  ctx.strokeStyle = 'rgba(220,220,170,0.4)'; ctx.lineWidth = 0.8; ctx.stroke();
 
-  ctx.beginPath();
-  ctx.arc(x, y, R, 0, 2 * Math.PI);
-  ctx.strokeStyle = 'rgba(220,220,180,0.5)';
-  ctx.lineWidth   = 0.8;
-  ctx.stroke();
-
-  if (altDeg > 3) {
-    ctx.fillStyle = 'rgba(200,200,160,0.8)';
-    ctx.font      = '10px sans-serif';
-    ctx.fillText(`月 ${Math.round(lit * 100)}%`, x + R + 3, y + 3);
-  }
+  ctx.fillStyle = 'rgba(200,200,150,0.75)';
+  ctx.font = '10px sans-serif';
+  ctx.fillText(`月 ${Math.round(lit*100)}%`, x+R+4, y+3);
 }
 
-function drawCardinals(ctx) {
-  const dirs = [
-    { label: 'N', az: 0 },
-    { label: 'E', az: 90 },
-    { label: 'S', az: 180 },
-    { label: 'W', az: 270 },
-  ];
-  ctx.font      = 'bold 13px sans-serif';
+// 画角ヒント（コンパス）
+function drawCompassHint(ctx, cam, cAz) {
+  // ビュー内に見える方角ラベルを端に表示
+  const dirs = [{l:'N',az:0},{l:'E',az:90},{l:'S',az:180},{l:'W',az:270}];
+  ctx.save();
+  ctx.font = 'bold 11px sans-serif';
   ctx.textAlign = 'center';
-  dirs.forEach(({ label, az }) => {
-    const { x, y } = project(0, az);
-    // 少し外側へ
-    const dx = x - CX, dy = y - CY;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    const nx  = CX + dx / len * (CR + 14);
-    const ny  = CY + dy / len * (CR + 14);
-    ctx.fillStyle = 'rgba(180,200,255,0.7)';
-    ctx.fillText(label, nx, ny + 4);
+  dirs.forEach(({l, az}) => {
+    // 高度0°の地平線上の点を投影
+    const pt = gProject(cam, 1, az);
+    if (!pt) return;
+    const {x, y} = pt;
+    if (x < 10 || x > VIEW_W-10 || y < 5 || y > VIEW_H-5) return;
+    ctx.fillStyle = 'rgba(160,190,220,0.55)';
+    ctx.fillText(l, x, y+12);
   });
-  ctx.textAlign = 'left';
+  ctx.restore();
 }
 
-// --- 画角オーバーレイ ---
-const SENSOR = {
-  full: { w: 36, h: 24 },
-  apsc: { w: 23.5, h: 15.6 },
-  m43:  { w: 17.3, h: 13.0 }
-};
-
-function drawFovOverlay(ctx, latDeg, lonDeg, date, focalLength, sensorKey) {
+// --- 画角オーバーレイ（写真フレーム）---
+function drawFovOverlay(ctx, cam, gc, cAlt, cAz, focalLength, sensorKey) {
   const sensor = SENSOR[sensorKey] || SENSOR.full;
   const hFov   = 2 * Math.atan(sensor.w / (2 * focalLength)) * RAD;
   const vFov   = 2 * Math.atan(sensor.h / (2 * focalLength)) * RAD;
 
-  // 銀河中心を基準
-  const { altDeg, azDeg } = galacticCenterAltAz(date, latDeg, lonDeg);
-  const cAlt = altDeg > 5 ? altDeg : 45;
-  const cAz  = altDeg > 5 ? azDeg  : 180;
+  // 銀河中心をフレーム中心に
+  const fAlt = gc.altDeg > 5 ? gc.altDeg : cAlt;
+  const fAz  = gc.altDeg > 5 ? gc.azDeg  : cAz;
+  const fcam  = buildCamera(fAlt, fAz);
+  const fFov  = Math.max(hFov, vFov) * 1.05;
+  const focalF = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
 
-  // 4コーナーを投影（Alt/Azオフセット）
-  const corners = [
-    { da: +vFov/2, dz: -hFov/2 },
-    { da: +vFov/2, dz: +hFov/2 },
-    { da: -vFov/2, dz: +hFov/2 },
-    { da: -vFov/2, dz: -hFov/2 },
-  ].map(({ da, dz }) => {
-    const a = Math.max(-5, Math.min(89, cAlt + da));
-    const z = ((cAz + dz) + 360) % 360;
-    return project(a, z);
+  // フレームの4コーナーをビュー上に投影
+  const fovHalf = (VIEW_W/2) / Math.tan(VIEW_HFOV/2 * DEG);
+  const corners3D = [
+    [-hFov/2*DEG, +vFov/2*DEG],
+    [+hFov/2*DEG, +vFov/2*DEG],
+    [+hFov/2*DEG, -vFov/2*DEG],
+    [-hFov/2*DEG, -vFov/2*DEG],
+  ].map(([dx, dy]) => {
+    // fcam空間でのコーナー方向
+    const {right, up, fwd} = fcam;
+    const scale = 1 / Math.cos(Math.hypot(dx, dy));
+    const wx = fwd[0] + Math.tan(dx)*right[0] + Math.tan(dy)*up[0];
+    const wy = fwd[1] + Math.tan(dx)*right[1] + Math.tan(dy)*up[1];
+    const wz = fwd[2] + Math.tan(dx)*right[2] + Math.tan(dy)*up[2];
+    // ワールド→Alt/Az
+    const len  = Math.hypot(wx, wy, wz);
+    const altD = Math.asin(wy/len) * RAD;
+    const azD  = ((Math.atan2(wx/len, wz/len) * RAD) + 360) % 360;
+    return gProject(cam, altD, azD);
   });
+
+  if (corners3D.some(c => !c)) return;
 
   ctx.save();
   ctx.beginPath();
-  ctx.moveTo(corners[0].x, corners[0].y);
-  corners.forEach(c => ctx.lineTo(c.x, c.y));
+  ctx.moveTo(corners3D[0].x, corners3D[0].y);
+  corners3D.forEach(c => ctx.lineTo(c.x, c.y));
   ctx.closePath();
-  ctx.strokeStyle = 'rgba(255,255,80,0.85)';
-  ctx.lineWidth   = 1.5;
-  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = 'rgba(255,255,80,0.9)';
+  ctx.lineWidth   = 2;
+  ctx.setLineDash([8, 5]);
   ctx.stroke();
+  ctx.fillStyle   = 'rgba(255,255,80,0.06)';
+  ctx.fill();
   ctx.setLineDash([]);
 
-  // ラベル
-  const lx = corners[1].x + 4;
-  const ly = corners[1].y - 4;
-  ctx.fillStyle = 'rgba(255,255,80,0.9)';
+  // ラベル: 右上コーナーの外側
+  const lx = Math.max(...corners3D.map(c=>c.x)) + 4;
+  const ly = Math.min(...corners3D.map(c=>c.y)) - 4;
+  ctx.fillStyle = 'rgba(255,255,80,0.92)';
   ctx.font      = 'bold 11px sans-serif';
+  ctx.textAlign = 'left';
   ctx.fillText(`${hFov.toFixed(1)}° × ${vFov.toFixed(1)}°`, lx, ly);
   ctx.restore();
 }
