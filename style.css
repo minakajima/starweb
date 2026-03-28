@@ -25,6 +25,7 @@ body {
   font-size: 15px;
   line-height: 1.6;
   min-height: 100vh;
+  overflow-x: hidden;
 }
 
 /* ===== 設定ボタン ===== */
@@ -264,6 +265,7 @@ main {
 .search-box { display: flex; gap: 0.5rem; }
 .search-box input {
   flex: 1;
+  min-width: 0;
   background: var(--bg3);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -766,3 +768,27 @@ footer {
 /* ===== Leaflet overrides ===== */
 .leaflet-container { background: #1a1a2e; }
 .leaflet-tile { filter: brightness(0.8) saturate(0.6) hue-rotate(200deg); }
+
+/* ===== モバイル対応 (〜480px) ===== */
+@media (max-width: 480px) {
+  .input-panel { padding: 1rem 0.75rem; }
+
+  /* 場所ラベル行: ボタンが収まらない場合は折り返す */
+  .location-label-row {
+    flex-wrap: wrap;
+    gap: 0.4rem;
+  }
+  .fav-list-btn {
+    font-size: 0.75rem;
+    padding: 0.2rem 0.4rem;
+  }
+
+  /* 検索ボックス: ボタンのパディングを縮小 */
+  button#search-btn {
+    padding: 0.6rem 0.7rem;
+    font-size: 0.85rem;
+  }
+  .fav-add-btn {
+    padding: 0 0.4rem;
+  }
+}
