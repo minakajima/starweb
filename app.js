@@ -1111,7 +1111,7 @@ document.addEventListener('DOMContentLoaded', () => {
   searchBtn.addEventListener('click', doSearch);
   locationInput.addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
   document.addEventListener('click', e => {
-    if (!searchResults.contains(e.target) && e.target !== locationInput) {
+    if (!searchResults.contains(e.target) && e.target !== locationInput && e.target !== searchBtn) {
       searchResults.classList.add('hidden');
     }
   });
