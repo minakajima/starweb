@@ -1,0 +1,288 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>天の川撮影プランナー</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+  <header>
+    <h1>🌌 天の川撮影プランナー</h1>
+    <p class="subtitle">最適な撮影日時を見つけて、天の川をイメージしよう</p>
+    <button id="settings-btn" class="settings-btn" title="設定">⚙️</button>
+  </header>
+
+  <!-- 設定モーダル -->
+  <div id="settings-overlay" class="settings-overlay hidden">
+    <div class="settings-modal">
+      <div class="settings-header">
+        <h2>⚙️ 設定</h2>
+        <button id="settings-close" class="modal-close">✕</button>
+      </div>
+      <div class="settings-body">
+
+        <!-- カメラデフォルト -->
+        <section class="settings-section">
+          <h3>📷 カメラのデフォルト</h3>
+          <div class="settings-row">
+            <label for="s-focal">焦点距離</label>
+            <div class="settings-input-unit">
+              <input type="number" id="s-focal" placeholder="例: 14" min="8" max="200"/> mm
+            </div>
+          </div>
+          <div class="settings-row">
+            <label for="s-sensor">センサーサイズ</label>
+            <select id="s-sensor">
+              <option value="full">フルサイズ (36×24mm)</option>
+              <option value="apsc">APS-C (23.5×15.6mm)</option>
+              <option value="m43">マイクロフォーサーズ (17.3×13mm)</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label>カメラ向き</label>
+            <div class="orientation-btns">
+              <label class="orient-btn" id="s-orient-portrait">
+                <input type="radio" name="s-orientation" value="portrait"> 縦
+              </label>
+              <label class="orient-btn" id="s-orient-landscape">
+                <input type="radio" name="s-orientation" value="landscape"> 横
+              </label>
+            </div>
+          </div>
+        </section>
+
+        <!-- 表示設定 -->
+        <section class="settings-section">
+          <h3>🖼️ 表示設定</h3>
+          <div class="settings-row">
+            <label for="s-show-fov">画角枠をデフォルトで表示</label>
+            <label class="toggle-label">
+              <input type="checkbox" id="s-show-fov"/>
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="settings-row">
+            <label for="s-hfov">参照ビュー画角</label>
+            <select id="s-hfov">
+              <option value="80">狭め (80°)</option>
+              <option value="100">標準 (100°)</option>
+              <option value="110" selected>広め (110°)</option>
+              <option value="130">超広角 (130°)</option>
+            </select>
+          </div>
+        </section>
+
+        <!-- 検索設定 -->
+        <section class="settings-section">
+          <h3>🔍 最適日時の検索設定</h3>
+          <div class="settings-row">
+            <label for="s-count">表示件数</label>
+            <select id="s-count">
+              <option value="3">3件</option>
+              <option value="5" selected>5件</option>
+              <option value="10">10件</option>
+            </select>
+          </div>
+          <div class="settings-row">
+            <label for="s-min-alt">銀河中心の最小高度</label>
+            <div class="settings-input-unit">
+              <input type="number" id="s-min-alt" min="0" max="30" step="1" value="5"/> °
+            </div>
+          </div>
+        </section>
+
+      </div>
+      <div class="settings-footer">
+        <button id="settings-reset" class="reset-btn">リセット</button>
+        <button id="settings-save" class="primary-btn">💾 保存して閉じる</button>
+      </div>
+    </div>
+  </div>
+
+  <main>
+    <!-- モード切替タブ -->
+    <div class="tab-bar">
+      <button class="tab-btn active" data-mode="optimal" id="tab-optimal">
+        📅 最適日時を探す
+      </button>
+      <button class="tab-btn" data-mode="simulate" id="tab-simulate">
+        🔭 日時指定シミュレーション
+      </button>
+    </div>
+
+    <!-- 入力パネル -->
+    <div class="input-panel">
+      <!-- 場所入力 -->
+      <div class="input-row">
+        <div class="location-label-row">
+          <label for="location-input">📍 撮影場所</label>
+          <button id="fav-list-btn" class="fav-list-btn" title="お気に入り一覧">⭐ お気に入り <span id="fav-count" class="fav-count hidden">0</span></button>
+        </div>
+        <div class="search-box">
+          <input type="text" id="location-input" placeholder="地名を入力（例: 富士山、北海道）" autocomplete="off"/>
+          <button id="search-btn">検索</button>
+          <button id="fav-add-btn" class="fav-add-btn" title="現在地をお気に入りに追加" disabled>☆</button>
+        </div>
+        <div id="search-results" class="search-results hidden"></div>
+      </div>
+
+      <!-- お気に入りパネル -->
+      <div id="fav-panel" class="fav-panel hidden">
+        <div id="fav-list"></div>
+        <p id="fav-empty" class="fav-empty hidden">まだお気に入りがありません</p>
+      </div>
+
+      <!-- 地図 -->
+      <div id="map"></div>
+      <p class="map-hint">地図をクリックして撮影場所を選択することもできます</p>
+
+      <!-- モード2専用: 日時入力 + スライダー -->
+      <div id="datetime-row" class="input-row hidden">
+        <label>🕐 日時指定</label>
+
+        <!-- 日付 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">📅 日付</span>
+            <input type="date" id="date-input"/>
+          </div>
+          <input type="range" id="date-slider" min="0" max="365" step="1" value="0"/>
+          <div class="slider-ticks">
+            <span>今日</span><span>+3ヶ月</span><span>+6ヶ月</span><span>+9ヶ月</span><span>+1年</span>
+          </div>
+        </div>
+
+        <!-- 時刻 -->
+        <div class="slider-group">
+          <div class="slider-header">
+            <span class="slider-label">🕐 時刻</span>
+            <input type="time" id="time-input" value="22:00"/>
+          </div>
+          <input type="range" id="time-slider" min="0" max="1439" step="5" value="1320"/>
+          <div class="slider-ticks">
+            <span>0:00</span><span>6:00</span><span>12:00</span><span>18:00</span><span>24:00</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 計算ボタン -->
+      <button id="calc-btn" class="primary-btn">✨ 計算する</button>
+    </div>
+
+    <!-- 結果パネル -->
+    <div id="result-panel" class="result-panel hidden">
+
+      <!-- モード1: 最適日時リスト -->
+      <div id="optimal-list" class="section">
+        <h2>📆 最適撮影日時 TOP5</h2>
+        <div id="optimal-cards"></div>
+      </div>
+
+      <!-- 星空ビジュアライゼーション -->
+      <div class="sky-section">
+        <div class="sky-wrapper">
+          <h2 id="sky-title">🌠 星空シミュレーション</h2>
+          <canvas id="sky-canvas" width="500" height="340"></canvas>
+        </div>
+
+        <!-- 撮影条件サマリ -->
+        <div class="condition-panel">
+          <h2>📋 撮影条件</h2>
+          <div id="condition-content">
+            <div class="condition-item">
+              <span class="label">日時</span>
+              <span id="cond-datetime">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">銀河中心高度</span>
+              <span id="cond-altitude">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">銀河中心方位</span>
+              <span id="cond-azimuth">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">月齢</span>
+              <span id="cond-moon">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">天文薄明終了</span>
+              <span id="cond-twilight-end">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">天文薄明開始</span>
+              <span id="cond-twilight-start">—</span>
+            </div>
+            <div class="condition-item" id="weather-row">
+              <span class="label">雲量 / 快晴度</span>
+              <span id="cond-weather">—</span>
+            </div>
+            <div class="condition-item">
+              <span class="label">総合スコア</span>
+              <span id="cond-score">—</span>
+            </div>
+          </div>
+
+          <!-- カメラ設定 -->
+          <div class="camera-section">
+            <h3>📷 カメラ設定（任意）</h3>
+            <div class="camera-row">
+              <label for="focal-input">焦点距離</label>
+              <input type="number" id="focal-input" placeholder="例: 14" min="8" max="200"/> mm
+            </div>
+            <div class="camera-row">
+              <label for="sensor-select">センサーサイズ</label>
+              <select id="sensor-select">
+                <option value="full">フルサイズ (36×24mm)</option>
+                <option value="apsc">APS-C (23.5×15.6mm)</option>
+                <option value="m43">マイクロフォーサーズ (17.3×13mm)</option>
+              </select>
+            </div>
+            <div class="camera-row">
+              <label>向き</label>
+              <div class="orientation-btns">
+                <label class="orient-btn active" id="orient-portrait">
+                  <input type="radio" name="orientation" value="portrait" checked> 縦
+                </label>
+                <label class="orient-btn" id="orient-landscape">
+                  <input type="radio" name="orientation" value="landscape"> 横
+                </label>
+              </div>
+            </div>
+            <div class="camera-row" id="fov-display" style="display:none">
+              <span class="label">画角</span>
+              <span id="fov-value">—</span>
+            </div>
+            <div class="camera-toggle">
+              <label class="toggle-label">
+                <input type="checkbox" id="fov-toggle"/>
+                <span class="toggle-slider"></span>
+                画角枠を表示
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ローディング -->
+    <div id="loading" class="loading hidden">
+      <div class="spinner"></div>
+      <p>計算中...</p>
+    </div>
+
+    <!-- エラー -->
+    <div id="error-msg" class="error-msg hidden"></div>
+  </main>
+
+  <footer>
+    <p>天文データ: Astronomy Engine ／ 地図: OpenStreetMap ／ 天気: Open-Meteo</p>
+  </footer>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/suncalc@1.8.0/suncalc.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
