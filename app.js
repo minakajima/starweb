@@ -680,21 +680,106 @@ function drawMoonPhoto(ctx, cam, latDeg, lonDeg, date) {
 
 // 画角ヒント（コンパス）
 function drawCompassHint(ctx, cam, cAz) {
-  // ビュー内に見える方角ラベルを端に表示
-  const dirs = [{l:'N',az:0},{l:'E',az:90},{l:'S',az:180},{l:'W',az:270}];
   ctx.save();
-  ctx.font = 'bold 11px sans-serif';
+
+  // --- 地平線上の方角ラベル（日本語・背景ピル付き） ---
+  const horizDirs = [
+    {l:'北', az:0}, {l:'北東', az:45}, {l:'東', az:90}, {l:'南東', az:135},
+    {l:'南', az:180}, {l:'南西', az:225}, {l:'西', az:270}, {l:'北西', az:315},
+  ];
+  ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
-  dirs.forEach(({l, az}) => {
-    // 高度0°の地平線上の点を投影
+  ctx.textBaseline = 'middle';
+  horizDirs.forEach(({l, az}) => {
     const pt = gProject(cam, 1, az);
     if (!pt) return;
     const {x, y} = pt;
-    if (x < 10 || x > VIEW_W-10 || y < 5 || y > VIEW_H-5) return;
-    ctx.fillStyle = 'rgba(160,190,220,0.55)';
-    ctx.fillText(l, x, y+12);
+    if (x < 28 || x > VIEW_W - 28 || y < 18 || y > VIEW_H - 18) return;
+    const tw = ctx.measureText(l).width + 12;
+    // 背景ピル（角丸矩形）
+    ctx.fillStyle = 'rgba(0,5,20,0.6)';
+    _fillRoundRect(ctx, x - tw/2, y - 9, tw, 18, 4);
+    // テキスト
+    ctx.fillStyle = az === 0 ? 'rgba(255,150,150,0.95)' : 'rgba(180,210,245,0.9)';
+    ctx.fillText(l, x, y);
   });
+
+  // --- コンパスローズ（右下コーナー） ---
+  const cx = VIEW_W - 42, cy = VIEW_H - 42, r = 22;
+
+  // 背景円
+  ctx.fillStyle = 'rgba(5,8,25,0.65)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, r + 6, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(80,110,160,0.55)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // 各方位のキャンバス上の方向ベクトルを取得
+  function getDir(az) {
+    const pt = gProject(cam, 1, az);
+    if (pt) {
+      const dx = pt.x - VIEW_W / 2, dy = pt.y - VIEW_H / 2;
+      const len = Math.hypot(dx, dy);
+      if (len > 1) return { dx: dx / len, dy: dy / len };
+    }
+    // カメラ後方の場合は反対方向を逆転して推定
+    const opp = gProject(cam, 1, (az + 180) % 360);
+    if (opp) {
+      const dx = -(opp.x - VIEW_W / 2), dy = -(opp.y - VIEW_H / 2);
+      const len = Math.hypot(dx, dy);
+      if (len > 1) return { dx: dx / len, dy: dy / len };
+    }
+    return null;
+  }
+
+  const roseItems = [
+    { l: 'N', az: 0,   color: '#ff7070', lw: 2 },
+    { l: 'S', az: 180, color: 'rgba(160,195,230,0.7)', lw: 1 },
+    { l: 'E', az: 90,  color: 'rgba(160,195,230,0.7)', lw: 1 },
+    { l: 'W', az: 270, color: 'rgba(160,195,230,0.7)', lw: 1 },
+  ];
+  roseItems.forEach(({ l, az, color, lw }) => {
+    const dir = getDir(az);
+    if (!dir) return;
+    const { dx, dy } = dir;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = lw;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(cx + dx * (r - 2), cy + dy * (r - 2));
+    ctx.stroke();
+    ctx.font = `${lw > 1 ? 'bold ' : ''}${lw > 1 ? 9 : 8}px sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = color;
+    ctx.fillText(l, cx + dx * (r + 7), cy + dy * (r + 7));
+  });
+
+  // 中心点
+  ctx.fillStyle = 'rgba(200,220,245,0.85)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 2, 0, Math.PI * 2);
+  ctx.fill();
+
   ctx.restore();
+}
+
+// 角丸矩形塗りつぶしヘルパー（Safari互換）
+function _fillRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,     y + r);
+  ctx.arcTo(x,     y,     x + r, y,         r);
+  ctx.closePath();
+  ctx.fill();
 }
 
 // --- 画角オーバーレイ（写真フレーム）---

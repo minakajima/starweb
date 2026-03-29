@@ -119,7 +119,7 @@
 | 📷 カメラ | 焦点距離 | なし |
 |  | センサーサイズ | フルサイズ |
 |  | カメラ向き | 縦 |
-| 🖼️ 表示 | 画角枠デフォルト表示 | OFF |
+| 🖼️ 表示 | 画角枠デフォルト表示 | ON |
 |  | 参照ビュー画角 | 110° |
 | 🔍 検索 | 表示件数 | 5件 |
 |  | 銀河中心の最小高度 | 5° |
@@ -283,7 +283,7 @@ VFOV_cam = 2 × atan(センサー高さ / (2 × 焦点距離))
   "focalLength":  "",
   "sensorKey":    "full",
   "orientation":  "portrait",
-  "showFov":      false,
+  "showFov":      true,
   "viewHFov":     110,
   "optimalCount": 5,
   "minGcAlt":     5
