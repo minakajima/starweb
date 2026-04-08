@@ -28,11 +28,36 @@ body {
   overflow-x: hidden;
 }
 
-/* ===== 設定ボタン ===== */
-.settings-btn {
+/* ===== ヘッダーボタン群 ===== */
+.header-btns {
   position: absolute;
   top: 1.2rem;
   right: 1.2rem;
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+}
+
+.lang-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-dim);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  width: 38px;
+  height: 38px;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.lang-btn:hover { background: rgba(74,158,255,0.15); color: var(--accent); }
+
+/* ===== 設定ボタン ===== */
+.settings-btn {
   background: rgba(255,255,255,0.07);
   border: 1px solid var(--border);
   border-radius: 8px;
