@@ -129,14 +129,14 @@ function moonPhaseEmoji(phase) {
 // --- 薄明時刻のフォーマット ---
 function formatTime(date) {
   if (!date || isNaN(date.getTime())) return '—';
-  return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+  return date.toLocaleTimeString(getCurrentLocale(), { hour: '2-digit', minute: '2-digit' });
 }
 function formatDateTime(date) {
   if (!date || isNaN(date.getTime())) return '—';
-  return date.toLocaleString('ja-JP', {
-    month: 'numeric', day: 'numeric',
-    weekday: 'short', hour: '2-digit', minute: '2-digit'
-  });
+  const opts = currentLang === 'ja'
+    ? { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' }
+    : { month: 'short',   day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' };
+  return date.toLocaleString(getCurrentLocale(), opts);
 }
 
 /* =========================================================
@@ -248,11 +248,11 @@ function getCloudCover(weatherData, date) {
 
 function cloudCoverToStars(pct) {
   if (pct === null || pct === undefined) return null;
-  if (pct <= 10)  return { stars: '★★★★★', label: '絶好', cls: 'clear5' };
-  if (pct <= 25)  return { stars: '★★★★☆', label: '良好', cls: 'clear4' };
-  if (pct <= 50)  return { stars: '★★★☆☆', label: '普通', cls: 'clear3' };
-  if (pct <= 75)  return { stars: '★★☆☆☆', label: '不向き', cls: 'clear2' };
-  return           { stars: '★☆☆☆☆', label: '厳しい', cls: 'clear1' };
+  if (pct <= 10)  return { stars: '★★★★★', label: t('weather.clear5'), cls: 'clear5' };
+  if (pct <= 25)  return { stars: '★★★★☆', label: t('weather.clear4'), cls: 'clear4' };
+  if (pct <= 50)  return { stars: '★★★☆☆', label: t('weather.clear3'), cls: 'clear3' };
+  if (pct <= 75)  return { stars: '★★☆☆☆', label: t('weather.clear2'), cls: 'clear2' };
+  return           { stars: '★☆☆☆☆', label: t('weather.clear1'), cls: 'clear1' };
 }
 
 function isWithin7Days(date) {
@@ -633,7 +633,7 @@ function drawGalacticCenterMark(ctx, cam, gc, latDeg, lonDeg, date) {
   // ラベル
   ctx.fillStyle = 'rgba(255,215,100,0.88)';
   ctx.font      = 'bold 11px sans-serif';
-  ctx.fillText('銀河中心', cx + 8, cy - 6);
+  ctx.fillText(t('sky.galCenter'), cx + 8, cy - 6);
 }
 
 // 月（写真風）
@@ -675,7 +675,7 @@ function drawMoonPhoto(ctx, cam, latDeg, lonDeg, date) {
 
   ctx.fillStyle = 'rgba(200,200,150,0.75)';
   ctx.font = '10px sans-serif';
-  ctx.fillText(`月 ${Math.round(lit*100)}%`, x+R+4, y+3);
+  ctx.fillText(`${t('sky.moon')} ${Math.round(lit*100)}%`, x+R+4, y+3);
 }
 
 // 画角ヒント（コンパス）
@@ -684,8 +684,10 @@ function drawCompassHint(ctx, cam, cAz) {
 
   // --- 地平線上の方角ラベル（日本語・背景ピル付き） ---
   const horizDirs = [
-    {l:'北', az:0}, {l:'北東', az:45}, {l:'東', az:90}, {l:'南東', az:135},
-    {l:'南', az:180}, {l:'南西', az:225}, {l:'西', az:270}, {l:'北西', az:315},
+    {l: t('dir.N'),  az: 0},   {l: t('dir.NE'), az: 45},
+    {l: t('dir.E'),  az: 90},  {l: t('dir.SE'), az: 135},
+    {l: t('dir.S'),  az: 180}, {l: t('dir.SW'), az: 225},
+    {l: t('dir.W'),  az: 270}, {l: t('dir.NW'), az: 315},
   ];
   ctx.font = 'bold 12px sans-serif';
   ctx.textAlign = 'center';
@@ -923,6 +925,10 @@ async function renderOptimalList(results) {
   const container = document.getElementById('optimal-cards');
   container.innerHTML = '';
 
+  // タイトルを設定・言語に応じて更新
+  const titleEl = document.getElementById('optimal-title');
+  if (titleEl) titleEl.textContent = t('result.optimalTitle') + (appSettings.optimalCount ?? 5);
+
   // 天気データ取得（バックグラウンド）
   const weatherData = await fetchWeather(state.location.lat, state.location.lon);
 
@@ -931,28 +937,34 @@ async function renderOptimalList(results) {
     card.className = 'optimal-card';
     card.dataset.idx = i;
 
-    const rankLabels = ['1位', '2位', '3位', '4位', '5位'];
-    const rankCls    = i < 3 ? `rank-${i+1}` : '';
-    const dateStr    = r.optimalTime
-      ? r.optimalTime.toLocaleString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' })
-      : r.date.toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' });
+    const rankLabel = t(`rank.${i}`);
+    const rankCls   = i < 3 ? `rank-${i+1}` : '';
+    const dateOpts  = currentLang === 'ja'
+      ? { month: 'long',  day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' }
+      : { month: 'short', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' };
+    const dateOnlyOpts = currentLang === 'ja'
+      ? { month: 'long',  day: 'numeric', weekday: 'short' }
+      : { month: 'short', day: 'numeric', weekday: 'short' };
+    const dateStr = r.optimalTime
+      ? r.optimalTime.toLocaleString(getCurrentLocale(), dateOpts)
+      : r.date.toLocaleDateString(getCurrentLocale(), dateOnlyOpts);
 
     // 天気バッジ
-    let weatherBadge = '<span class="badge badge-noforecast">予報範囲外</span>';
+    let weatherBadge = `<span class="badge badge-noforecast">${t('weather.outOfRange')}</span>`;
     if (weatherData && r.optimalTime && isWithin7Days(r.optimalTime)) {
       const pct = getCloudCover(weatherData, r.optimalTime);
       const sw  = cloudCoverToStars(pct);
       if (sw) {
         const isCloudy = pct > 50;
-        weatherBadge = `<span class="badge badge-weather${isCloudy ? ' cloudy' : ''}">${sw.stars} 雲量${pct}%</span>`;
+        weatherBadge = `<span class="badge badge-weather${isCloudy ? ' cloudy' : ''}">${sw.stars} ${t('weather.cloudCover')}${pct}%</span>`;
       }
     }
 
     card.innerHTML = `
-      <div class="card-rank ${rankCls}">${rankLabels[i]}</div>
+      <div class="card-rank ${rankCls}">${rankLabel}</div>
       <div class="card-info">
         <div class="card-date">${dateStr}</div>
-        <div class="card-detail">天文薄明: ${formatTime(r.nightStart)} 〜 ${formatTime(r.nightEnd)}</div>
+        <div class="card-detail">${t('card.twilight')}: ${formatTime(r.nightStart)} 〜 ${formatTime(r.nightEnd)}</div>
       </div>
       <div class="card-badges">
         <span class="badge badge-alt">↑ ${r.maxAlt.toFixed(1)}°</span>
@@ -986,8 +998,11 @@ function renderSkyAndCondition(date) {
   drawSky(canvas, lat, lon, date, state.showFov, state.focalLength, state.sensorKey, state.orientation);
 
   // タイトル
+  const skyDateOpts = currentLang === 'ja'
+    ? { month: 'long',  day: 'numeric', hour: '2-digit', minute: '2-digit' }
+    : { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' };
   document.getElementById('sky-title').textContent =
-    '🌠 ' + date.toLocaleString('ja-JP', { month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' }) + ' の空';
+    '🌠 ' + date.toLocaleString(getCurrentLocale(), skyDateOpts) + t('sky.titleSuffix');
 
   // 撮影条件
   const { altDeg, azDeg } = galacticCenterAltAz(date, lat, lon);
@@ -998,7 +1013,7 @@ function renderSkyAndCondition(date) {
   const nextTimes = SunCalc.getTimes(nextDay, lat, lon);
 
   document.getElementById('cond-datetime').textContent    = formatDateTime(date);
-  document.getElementById('cond-altitude').textContent    = altDeg > 0 ? `${altDeg.toFixed(1)}° （撮影可）` : `${altDeg.toFixed(1)}° （地平線下）`;
+  document.getElementById('cond-altitude').textContent    = altDeg > 0 ? `${altDeg.toFixed(1)}°${t('alt.above')}` : `${altDeg.toFixed(1)}°${t('alt.below')}`;
   document.getElementById('cond-azimuth').textContent     = `${azDeg.toFixed(1)}° (${azimuthLabel(azDeg)})`;
   document.getElementById('cond-moon').textContent        = `${moonPhaseEmoji(moonIll.phase)} ${Math.round(moonIll.fraction * 100)}%`;
   document.getElementById('cond-twilight-end').textContent   = formatTime(times.night);
@@ -1022,7 +1037,7 @@ function renderSkyAndCondition(date) {
   if (state.selectedResult) {
     const s = state.selectedResult;
     condScore.parentElement.style.display = '';
-    condScore.textContent = `${(s.score * 100).toFixed(0)}点`;
+    condScore.textContent = `${(s.score * 100).toFixed(0)}${t('score.suffix')}`;
   } else {
     condScore.parentElement.style.display = 'none';
   }
@@ -1034,8 +1049,8 @@ function renderSkyAndCondition(date) {
     const sh   = state.orientation === 'portrait' ? sensor.w : sensor.h;
     const hFov = 2 * Math.atan(sw / (2 * state.focalLength)) * RAD;
     const vFov = 2 * Math.atan(sh / (2 * state.focalLength)) * RAD;
-    const orient = state.orientation === 'portrait' ? '縦' : '横';
-    document.getElementById('fov-value').textContent = `[${orient}] 水平 ${hFov.toFixed(1)}° × 垂直 ${vFov.toFixed(1)}°`;
+    const orient = state.orientation === 'portrait' ? t('orient.portrait') : t('orient.landscape');
+    document.getElementById('fov-value').textContent = `[${orient}] ${t('fov.h')} ${hFov.toFixed(1)}° × ${t('fov.v')} ${vFov.toFixed(1)}°`;
     document.getElementById('fov-display').style.display = '';
   } else {
     document.getElementById('fov-display').style.display = 'none';
@@ -1043,14 +1058,18 @@ function renderSkyAndCondition(date) {
 }
 
 function azimuthLabel(az) {
-  const dirs = ['北','北北東','北東','東北東','東','東南東','南東','南南東',
-                 '南','南南西','南西','西南西','西','西北西','北西','北北西'];
+  const dirs = [
+    t('dir.N'),   t('dir.NNE'), t('dir.NE'),  t('dir.ENE'),
+    t('dir.E'),   t('dir.ESE'), t('dir.SE'),  t('dir.SSE'),
+    t('dir.S'),   t('dir.SSW'), t('dir.SW'),  t('dir.WSW'),
+    t('dir.W'),   t('dir.WNW'), t('dir.NW'),  t('dir.NNW'),
+  ];
   return dirs[Math.round(az / 22.5) % 16];
 }
 
 // --- メイン処理: 場所が決まったら実行 ---
 async function runOptimal() {
-  if (!state.location) { showError('場所を選択してください。'); return; }
+  if (!state.location) { showError(t('error.noLocation')); return; }
   showError('');
   showLoading(true);
   showResult(false);
@@ -1067,7 +1086,7 @@ async function runOptimal() {
   showLoading(false);
 
   if (results.length === 0) {
-    showError('この場所では天の川の撮影に適した日時が見つかりませんでした。');
+    showError(t('error.noResults'));
     return;
   }
   document.getElementById('optimal-list').classList.remove('hidden');
@@ -1076,14 +1095,14 @@ async function runOptimal() {
 }
 
 async function runSimulate() {
-  if (!state.location) { showError('場所を選択してください。'); return; }
+  if (!state.location) { showError(t('error.noLocation')); return; }
   const dateVal = document.getElementById('date-input').value;
   const timeVal = document.getElementById('time-input').value;
-  if (!dateVal) { showError('日付を選択してください。'); return; }
+  if (!dateVal) { showError(t('error.noDate')); return; }
   showError('');
 
   const date = new Date(`${dateVal}T${timeVal || '22:00'}:00`);
-  if (isNaN(date.getTime())) { showError('日時の形式が正しくありません。'); return; }
+  if (isNaN(date.getTime())) { showError(t('error.invalidDate')); return; }
 
   // スライダーを入力値に同期
   syncDateSlider();
@@ -1168,12 +1187,12 @@ document.addEventListener('DOMContentLoaded', () => {
   async function doSearch() {
     const q = locationInput.value.trim();
     if (!q) return;
-    searchResults.innerHTML = '<div class="search-result-item">検索中...</div>';
+    searchResults.innerHTML = `<div class="search-result-item">${t('search.loading')}</div>`;
     searchResults.classList.remove('hidden');
     const results = await geocodeSearch(q);
     searchResults.innerHTML = '';
     if (results.length === 0) {
-      searchResults.innerHTML = '<div class="search-result-item">見つかりませんでした</div>';
+      searchResults.innerHTML = `<div class="search-result-item">${t('search.notFound')}</div>`;
       return;
     }
     results.forEach(r => {
@@ -1274,6 +1293,22 @@ document.addEventListener('DOMContentLoaded', () => {
       const d = new Date(`${document.getElementById('date-input').value}T${document.getElementById('time-input').value}:00`);
       if (!isNaN(d)) renderSkyAndCondition(d);
     }
+  });
+
+  // 言語切替ボタン
+  document.getElementById('lang-btn').addEventListener('click', () => {
+    setLang(currentLang === 'ja' ? 'en' : 'ja');
+    // 表示済みの動的コンテンツを再描画
+    if (state.optimalResults.length > 0 && state.mode === 'optimal') {
+      renderOptimalList(state.optimalResults);
+    }
+    if (state.selectedResult) {
+      renderSkyAndCondition(state.selectedResult.optimalTime || state.selectedResult.date);
+    } else if (state.mode === 'simulate') {
+      const d = buildDateFromInputs();
+      if (d && state.location) renderSkyAndCondition(d);
+    }
+    updateFavAddBtn();
   });
 
   // 地図初期化
@@ -1398,16 +1433,16 @@ document.addEventListener('DOMContentLoaded', () => {
     if (!state.location) {
       btn.disabled = true;
       btn.textContent = '☆';
-      btn.title = 'お気に入りに追加';
+      btn.title = t('fav.add');
       return;
     }
     btn.disabled = false;
     if (isFavorited(state.location.lat, state.location.lon)) {
       btn.textContent = '⭐';
-      btn.title = 'お気に入り登録済み';
+      btn.title = t('fav.added');
     } else {
       btn.textContent = '☆';
-      btn.title = 'お気に入りに追加';
+      btn.title = t('fav.add');
     }
   }
 
@@ -1447,7 +1482,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const editBtn = document.createElement('button');
       editBtn.className = 'fav-btn';
       editBtn.textContent = '✏️';
-      editBtn.title = '名前を編集';
+      editBtn.title = t('fav.edit');
       editBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const input = document.createElement('input');
@@ -1473,7 +1508,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const delBtn = document.createElement('button');
       delBtn.className = 'fav-btn';
       delBtn.textContent = '🗑️';
-      delBtn.title = '削除';
+      delBtn.title = t('fav.delete');
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         const favs2 = loadFavorites().filter(f => f.id !== fav.id);
